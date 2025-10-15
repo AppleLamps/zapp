@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
 import Masonry from "react-masonry-css";
 import { loadSettings } from "@/hooks/useLocalSettings";
@@ -36,6 +36,16 @@ const ASPECT_RATIOS = [
   "21:9",
 ] as const;
 
+type HistoryItem = {
+  id: number;
+  created_at: string;
+  provider: Provider;
+  mode: Mode;
+  model_or_endpoint: string;
+  prompt: string;
+  result_urls?: string[] | null;
+};
+
 export default function HomePage() {
   const { theme, toggleTheme } = useTheme();
   const [provider, setProvider] = useState<Provider>("openrouter");
@@ -69,6 +79,11 @@ export default function HomePage() {
   const [seed, setSeed] = useState<number | "">("");
   const [openRawByDefault, setOpenRawByDefault] = useState(false);
   const [openLogsByDefault, setOpenLogsByDefault] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const s = loadSettings();
@@ -84,6 +99,62 @@ export default function HomePage() {
     setOpenLogsByDefault(s.showLogsByDefault);
     setOpenRawByDefault(s.showRawByDefault);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchHistory() {
+      try {
+        setHistoryError(null);
+        setHistoryLoading(true);
+        const res = await fetch("/api/history");
+        if (!res.ok) {
+          throw new Error("Failed to load history");
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const items = Array.isArray(data?.data) ? data.data : [];
+        setHistory(
+          items.map((item: any) => ({
+            id: item.id,
+            created_at: item.created_at,
+            provider: item.provider as Provider,
+            mode: item.mode as Mode,
+            model_or_endpoint: item.model_or_endpoint,
+            prompt: item.prompt,
+            result_urls: item.result_urls ?? [],
+          }))
+        );
+      } catch (err: any) {
+        if (!cancelled) {
+          setHistoryError(err?.message || "Unable to load history.");
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+    fetchHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopiedIndex(null);
+    if (copyResetRef.current) {
+      clearTimeout(copyResetRef.current);
+      copyResetRef.current = null;
+    }
+  }, [images]);
 
   function log(message: string) {
     const ts = new Date().toLocaleTimeString();
@@ -410,7 +481,7 @@ export default function HomePage() {
       }
     }
 
-  async function copyImage(src: string) {
+  async function copyImage(src: string, idx?: number) {
     try {
       const response = await fetch(src);
       const blob = await response.blob();
@@ -419,10 +490,22 @@ export default function HomePage() {
         // @ts-ignore
         new ClipboardItem({ [blob.type]: blob }),
       ]);
+      if (typeof idx === "number") {
+        setCopiedIndex(idx);
+        if (copyResetRef.current) {
+          clearTimeout(copyResetRef.current);
+        }
+        copyResetRef.current = setTimeout(() => {
+          setCopiedIndex(null);
+          copyResetRef.current = null;
+        }, 2000);
+      }
       log("Copied image to clipboard");
+      return true;
     } catch (e: any) {
       setError(e?.message || "Failed to copy image");
       log(`Copy failed: ${e?.message || e}`);
+      return false;
     }
   }
 
@@ -462,10 +545,6 @@ export default function HomePage() {
     });
   }
 
-  function clearSelection() {
-    setSelected(new Set());
-  }
-
   function selectAll() {
     setSelected(new Set(images.map((_, i) => i)));
   }
@@ -474,8 +553,10 @@ export default function HomePage() {
     if (selected.size === 0) return;
     let count = 0;
     for (const idx of selected) {
-      await copyImage(images[idx]);
-      count++;
+      const success = await copyImage(images[idx], idx);
+      if (success) {
+        count++;
+      }
     }
     showToast("success", `Copied ${count} image(s) to clipboard`);
   }
@@ -521,6 +602,30 @@ export default function HomePage() {
       showToast("error", msg);
       log(`ZIP download failed: ${msg}`);
     }
+  }
+
+  function handleHistoryRerun(item: HistoryItem) {
+    setProvider(item.provider);
+    setMode(item.mode);
+    setPrompt(item.prompt);
+    if (item.provider === "openrouter") {
+      setOpenrouterModel(item.model_or_endpoint);
+    } else {
+      if (item.mode === "generate") {
+        setFalGenerateEndpoint(item.model_or_endpoint);
+      } else {
+        setFalEditEndpoint(item.model_or_endpoint);
+      }
+    }
+    setImages(Array.isArray(item.result_urls) ? item.result_urls : []);
+    setSelected(new Set());
+    setError(null);
+    setRawResponse(null);
+    setLogs([]);
+    setImageFile(null);
+    setImageUrl("");
+    showToast("info", "Loaded history settings. Review and run when ready.");
+    log(`Loaded history item ${item.id} for rerun`);
   }
 
   function cancelRequest() {
@@ -623,89 +728,95 @@ export default function HomePage() {
           )}
 
           {provider === "fal" && (
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              {mode === "generate" ? (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
-                  <select
-                    value={falGenerateEndpoint}
-                    onChange={(e) => setFalGenerateEndpoint(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  >
-                    {FAL_GENERATE_ENDPOINTS.map((ep) => (
-                      <option key={ep.id} value={ep.id}>
-                        {ep.label}
-                      </option>
-                    ))}
-                  </select>
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {mode === "generate" ? (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
+                    <select
+                      value={falGenerateEndpoint}
+                      onChange={(e) => setFalGenerateEndpoint(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    >
+                      {FAL_GENERATE_ENDPOINTS.map((ep) => (
+                        <option key={ep.id} value={ep.id}>
+                          {ep.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
+                    <select
+                      value={falEditEndpoint}
+                      onChange={(e) => setFalEditEndpoint(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    >
+                      {FAL_EDIT_ENDPOINTS.map((ep) => (
+                        <option key={ep.id} value={ep.id}>
+                          {ep.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
+                <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Advanced FAL.ai Settings</summary>
+                <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={6}
+                      value={numImages}
+                      onChange={(e) => setNumImages(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 7"
+                      value={guidanceScale === "" ? "" : guidanceScale}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "") setGuidanceScale("");
+                        else setGuidanceScale(Number(v));
+                      }}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
+                    <textarea
+                      value={negativePrompt}
+                      onChange={(e) => setNegativePrompt(e.target.value)}
+                      placeholder="Describe what to avoid in the image (FAL only)"
+                      rows={2}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
+                    <input
+                      type="number"
+                      placeholder="optional"
+                      value={seed === "" ? "" : seed}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "") setSeed("");
+                        else setSeed(Number(v));
+                      }}
+                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                    />
+                  </div>
                 </div>
-              ) : (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
-                  <select
-                    value={falEditEndpoint}
-                    onChange={(e) => setFalEditEndpoint(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  >
-                    {FAL_EDIT_ENDPOINTS.map((ep) => (
-                      <option key={ep.id} value={ep.id}>
-                        {ep.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {/* Advanced controls for FAL */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={6}
-                  value={numImages}
-                  onChange={(e) => setNumImages(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 7"
-                  value={guidanceScale === "" ? "" : guidanceScale}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "") setGuidanceScale("");
-                    else setGuidanceScale(Number(v));
-                  }}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
-                <textarea
-                  value={negativePrompt}
-                  onChange={(e) => setNegativePrompt(e.target.value)}
-                  placeholder="Describe what to avoid in the image (FAL only)"
-                  rows={2}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
-                <input
-                  type="number"
-                  placeholder="optional"
-                  value={seed === "" ? "" : seed}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "") setSeed("");
-                    else setSeed(Number(v));
-                  }}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                />
-              </div>
+              </details>
             </div>
           )}
 
@@ -727,8 +838,15 @@ export default function HomePage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                  disabled={Boolean(imageUrl)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setImageFile(file);
+                    if (file) {
+                      setImageUrl("");
+                    }
+                  }}
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <div>
@@ -736,9 +854,16 @@ export default function HomePage() {
                 <input
                   type="url"
                   value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
+                  disabled={Boolean(imageFile)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setImageUrl(value);
+                    if (value) {
+                      setImageFile(null);
+                    }
+                  }}
                   placeholder="https://example.com/image.jpg"
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">If both are provided, file upload takes precedence.</p>
               </div>
@@ -798,61 +923,116 @@ export default function HomePage() {
           </div>
         </form>
 
-        {images.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold">Results</h2>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button onClick={selectAll} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Select all</button>
-              <button onClick={clearSelection} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Clear</button>
-              <button onClick={copySelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Copy selected</button>
-              <button onClick={downloadSelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected</button>
-              <button onClick={downloadSelectedZip} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected as ZIP</button>
-              <span className="text-xs text-gray-500 dark:text-gray-400">Selected: {selected.size}</span>
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold">Results</h2>
+          {images.length > 0 ? (
+            <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button onClick={selectAll} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Select all</button>
+                <button onClick={() => setSelected(new Set())} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Clear Selection</button>
+                <button onClick={copySelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Copy selected</button>
+                <button onClick={downloadSelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected</button>
+                <button onClick={downloadSelectedZip} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected as ZIP</button>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Selected: {selected.size}</span>
+              </div>
+              <Masonry
+                breakpointCols={{
+                  default: 3,
+                  1024: 2,
+                  640: 1
+                }}
+                className="flex -ml-4 mt-4 w-auto"
+                columnClassName="pl-4 bg-clip-padding"
+              >
+                {images.map((src, idx) => (
+                  <div key={idx} className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx) ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100" : "border-gray-200 dark:border-gray-800"} bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
+                    onClick={() => toggleSelect(idx)}
+                  >
+                    <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />
+                    {selected.has(idx) && (
+                      <div className="pointer-events-none absolute left-2 top-2 rounded bg-gray-900 dark:bg-gray-100 px-2 py-1 text-xs text-white dark:text-gray-900">Selected</div>
+                    )}
+                    <div className="flex items-center gap-2 p-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyImage(src, idx);
+                        }}
+                        className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+                      >
+                        {copiedIndex === idx ? "Copied!" : "Copy image"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadImage(src, idx);
+                        }}
+                        className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+                      >
+                        Download
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </Masonry>
+            </>
+          ) : loading ? (
+            <div className="mt-6 flex h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-neutral-950 text-gray-700 dark:text-gray-300">
+              <img src="/loading.svg" alt="Loading" className="h-10 w-10" />
+              <p className="text-sm font-medium">Generating your images...</p>
             </div>
-            <Masonry
-              breakpointCols={{
-                default: 3,
-                1024: 2,
-                640: 1
-              }}
-              className="flex -ml-4 mt-4 w-auto"
-              columnClassName="pl-4 bg-clip-padding"
-            >
-              {images.map((src, idx) => (
-                <div key={idx} className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx) ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100" : "border-gray-200 dark:border-gray-800"} bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
-                  onClick={() => toggleSelect(idx)}
-                >
-                  <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />
-                  {selected.has(idx) && (
-                    <div className="pointer-events-none absolute left-2 top-2 rounded bg-gray-900 dark:bg-gray-100 px-2 py-1 text-xs text-white dark:text-gray-900">Selected</div>
-                  )}
-                  <div className="flex items-center gap-2 p-3">
+          ) : (
+            <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No images yet. Run a prompt to see results here.</p>
+          )}
+        </div>
+
+        <div className="mt-10">
+          <h2 className="text-xl font-semibold">History</h2>
+          {historyLoading ? (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Loading your recent runs...</p>
+          ) : historyError ? (
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">Could not load history: {historyError}</p>
+          ) : history.length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No history yet. Generate something to build your timeline.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {history.map((item) => (
+                <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.prompt}</p>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {item.provider === "fal" ? "FAL.ai" : "OpenRouter"} · {item.mode === "edit" ? "Edit" : "Generate"} · {item.model_or_endpoint}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{new Date(item.created_at).toLocaleString()}</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyImage(src);
-                      }}
-                      className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+                      onClick={() => handleHistoryRerun(item)}
+                      className="self-start rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                     >
-                      Copy image
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        downloadImage(src, idx);
-                      }}
-                      className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-                    >
-                      Download
+                      Re-run
                     </button>
                   </div>
+                  {item.result_urls && item.result_urls.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {item.result_urls.map((url, idx) => (
+                        <img
+                          key={`${item.id}-${idx}`}
+                          src={url}
+                          alt={`History ${item.id} result ${idx + 1}`}
+                          className="h-24 w-full rounded-md object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
-            </Masonry>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {rawResponse && (
           <div className="mt-8">
