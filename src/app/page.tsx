@@ -1,102 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import JSZip from "jszip";
-import Masonry from "react-masonry-css";
+import { useEffect, useState } from "react";
 import { loadSettings } from "@/hooks/useLocalSettings";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Moon, Sun } from "lucide-react";
-
-type Provider = "openrouter" | "fal";
-type Mode = "generate" | "edit";
-
-type OpenrouterModelOption = {
-  id: string;
-  label: string;
-  description: string;
-  cost: {
-    generate: number;
-    edit: number;
-  };
-};
-
-type FalEndpointOption = {
-  id: string;
-  label: string;
-  description: string;
-  costPerImage: number;
-};
-
-const OPENROUTER_MODELS: OpenrouterModelOption[] = [
-  {
-    id: "google/gemini-2.5-flash-image-preview",
-    label: "Google: Gemini 2.5 Flash Image Preview",
-    description: "Fast multimodal model tuned for preview-quality image renders. Great for rapid iteration.",
-    cost: {
-      generate: 0.02,
-      edit: 0.03,
-    },
-  },
-];
-
-const FAL_GENERATE_ENDPOINTS: FalEndpointOption[] = [
-  {
-    id: "fal-ai/flux/dev",
-    label: "FLUX.1 [dev] (Text to Image)",
-    description: "Development endpoint with quick turnaround. Ideal for experimenting with prompts.",
-    costPerImage: 0.012,
-  },
-  {
-    id: "fal-ai/flux-pro/kontext/max/text-to-image",
-    label: "FLUX.1 Kontext [max] (Text to Image)",
-    description: "High fidelity text-to-image endpoint for production-ready assets.",
-    costPerImage: 0.035,
-  },
-];
-
-const FAL_EDIT_ENDPOINTS: FalEndpointOption[] = [
-  {
-    id: "fal-ai/flux-pro/kontext/max",
-    label: "FLUX.1 Kontext [max] (Image to Image)",
-    description: "Image-to-image endpoint preserving composition while applying prompt-driven edits.",
-    costPerImage: 0.028,
-  },
-];
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-});
-
-const ASPECT_RATIOS = [
-  "1:1",
-  "16:9",
-  "9:16",
-  "4:3",
-  "3:4",
-  "2:3",
-  "3:2",
-  "4:5",
-  "5:4",
-  "21:9",
-] as const;
-
-type HistoryItem = {
-  id: number;
-  created_at: string;
-  provider: Provider;
-  mode: Mode;
-  model_or_endpoint: string;
-  prompt: string;
-  result_urls?: string[] | null;
-};
-
-type CostEstimate = {
-  total: number;
-  breakdown: string;
-  note?: string;
-};
+import type { Provider, Mode } from "@/lib/types";
+import { ASPECT_RATIOS } from "@/lib/types";
+import { GenerationForm } from "@/components/GenerationForm";
+import { Results } from "@/components/Results";
+import { History } from "@/components/History";
 
 export default function HomePage() {
   const { theme, toggleTheme } = useTheme();
@@ -104,43 +16,34 @@ export default function HomePage() {
   const [mode, setMode] = useState<Mode>("generate");
   const [prompt, setPrompt] = useState("");
   const [openrouterModel, setOpenrouterModel] = useState<string>(
-    OPENROUTER_MODELS[0].id
+    "google/gemini-2.5-flash-image-preview"
   );
   const [aspectRatio, setAspectRatio] = useState<(typeof ASPECT_RATIOS)[number] | "">("");
-  const [falGenerateEndpoint, setFalGenerateEndpoint] = useState<string>(
-    FAL_GENERATE_ENDPOINTS[0].id
-  );
-  const [falEditEndpoint, setFalEditEndpoint] = useState<string>(
-    FAL_EDIT_ENDPOINTS[0].id
-  );
+  const [falGenerateEndpoint, setFalGenerateEndpoint] = useState<string>("fal-ai/flux/dev");
+  const [falEditEndpoint, setFalEditEndpoint] = useState<string>("fal-ai/flux-pro/kontext/max");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string>("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [rawResponse, setRawResponse] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [requestStatus, setRequestStatus] = useState<"idle" | "queued" | "running" | "completed" | "error">("idle");
+  const [requestStatus, setRequestStatus] = useState<"idle" | "queued" | "running" | "completed" | "error">(
+    "idle"
+  );
   const [progress, setProgress] = useState<number>(0);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [toasts, setToasts] = useState<Array<{ id: number; type: "success" | "error" | "info"; message: string }>>([]);
+  const [toasts, setToasts] = useState<
+    Array<{ id: number; type: "success" | "error" | "info"; message: string }>
+  >([]);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+
   const [numImages, setNumImages] = useState<number>(1);
   const [negativePrompt, setNegativePrompt] = useState<string>("");
   const [guidanceScale, setGuidanceScale] = useState<number | "">("");
   const [seed, setSeed] = useState<number | "">("");
   const [openRawByDefault, setOpenRawByDefault] = useState(false);
   const [openLogsByDefault, setOpenLogsByDefault] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState<boolean>(true);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historySearch, setHistorySearch] = useState<string>("");
-  const [historyProviderFilter, setHistoryProviderFilter] = useState<"all" | Provider>("all");
-  const [historyModeFilter, setHistoryModeFilter] = useState<"all" | Mode>("all");
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const s = loadSettings();
@@ -157,180 +60,6 @@ export default function HomePage() {
     setOpenRawByDefault(s.showRawByDefault);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchHistory() {
-      try {
-        setHistoryError(null);
-        setHistoryLoading(true);
-        const res = await fetch("/api/history");
-        if (!res.ok) {
-          throw new Error("Failed to load history");
-        }
-        const data = await res.json();
-        if (cancelled) return;
-        const items = Array.isArray(data?.data) ? data.data : [];
-        setHistory(
-          items.map((item: any) => ({
-            id: item.id,
-            created_at: item.created_at,
-            provider: item.provider as Provider,
-            mode: item.mode as Mode,
-            model_or_endpoint: item.model_or_endpoint,
-            prompt: item.prompt,
-            result_urls: item.result_urls ?? [],
-          }))
-        );
-      } catch (err: any) {
-        if (!cancelled) {
-          setHistoryError(err?.message || "Unable to load history.");
-        }
-      } finally {
-        if (!cancelled) {
-          setHistoryLoading(false);
-        }
-      }
-    }
-    fetchHistory();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetRef.current) {
-        clearTimeout(copyResetRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    setCopiedIndex(null);
-    if (copyResetRef.current) {
-      clearTimeout(copyResetRef.current);
-      copyResetRef.current = null;
-    }
-  }, [images]);
-
-  useEffect(() => {
-    if (!imageFile) {
-      setImagePreviewUrl((prev) => {
-        if (prev) {
-          URL.revokeObjectURL(prev);
-        }
-        return null;
-      });
-      return;
-    }
-    const objectUrl = URL.createObjectURL(imageFile);
-    setImagePreviewUrl((prev) => {
-      if (prev) {
-        URL.revokeObjectURL(prev);
-      }
-      return objectUrl;
-    });
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
-  }, [imageFile]);
-
-  const selectedOpenrouterModel = useMemo(
-    () => OPENROUTER_MODELS.find((m) => m.id === openrouterModel) || OPENROUTER_MODELS[0] || null,
-    [openrouterModel]
-  );
-
-  const selectedFalGenerateEndpoint = useMemo(
-    () => FAL_GENERATE_ENDPOINTS.find((ep) => ep.id === falGenerateEndpoint) || FAL_GENERATE_ENDPOINTS[0] || null,
-    [falGenerateEndpoint]
-  );
-
-  const selectedFalEditEndpoint = useMemo(
-    () => FAL_EDIT_ENDPOINTS.find((ep) => ep.id === falEditEndpoint) || FAL_EDIT_ENDPOINTS[0] || null,
-    [falEditEndpoint]
-  );
-
-  const filteredHistory = useMemo(() => {
-    const query = historySearch.trim().toLowerCase();
-    return history.filter((item) => {
-      if (historyProviderFilter !== "all" && item.provider !== historyProviderFilter) return false;
-      if (historyModeFilter !== "all" && item.mode !== historyModeFilter) return false;
-      if (!query) return true;
-      const haystack = [
-        item.prompt,
-        item.model_or_endpoint,
-        item.provider,
-        item.mode,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [history, historySearch, historyProviderFilter, historyModeFilter]);
-
-  const filtersActive =
-    historySearch.trim() !== "" || historyProviderFilter !== "all" || historyModeFilter !== "all";
-
-  const costEstimate = useMemo<CostEstimate | null>(() => {
-    const negativePromptMultiplier = negativePrompt.trim() ? 1.02 : 1;
-    const guidanceValue = guidanceScale === "" ? null : Number(guidanceScale);
-    let guidanceMultiplier = 1;
-    if (typeof guidanceValue === "number" && !Number.isNaN(guidanceValue)) {
-      if (guidanceValue > 12) guidanceMultiplier = 1.12;
-      else if (guidanceValue > 8) guidanceMultiplier = 1.06;
-    }
-    if (provider === "openrouter") {
-      const model = selectedOpenrouterModel;
-      if (!model) return null;
-      const baseCost = model.cost[mode];
-      const aspectMultiplier = aspectRatio && aspectRatio !== "" && aspectRatio !== "1:1" ? 1.08 : 1;
-      const total = baseCost * aspectMultiplier * guidanceMultiplier * negativePromptMultiplier;
-      const breakdownParts = [`${currencyFormatter.format(baseCost)} ${mode === "generate" ? "base cost" : "edit base cost"}`];
-      if (aspectMultiplier > 1) breakdownParts.push("aspect ratio adjustment (+8%)");
-      if (guidanceMultiplier > 1) {
-        breakdownParts.push(
-          `guidance scale adjustment (+${Math.round((guidanceMultiplier - 1) * 100)}%)`
-        );
-      }
-      if (negativePromptMultiplier > 1) breakdownParts.push("negative prompt parsing (+2%)");
-      return {
-        total,
-        breakdown: `${breakdownParts.join(" + ")} via ${model.label}`,
-        note: "Estimate recalculates automatically while you update OpenRouter settings.",
-      };
-    }
-    if (provider === "fal") {
-      const endpoint = mode === "generate" ? selectedFalGenerateEndpoint : selectedFalEditEndpoint;
-      if (!endpoint) return null;
-      const imageCount = Math.max(1, Number(numImages) || 1);
-      let perImage = endpoint.costPerImage * guidanceMultiplier * negativePromptMultiplier;
-      const total = perImage * imageCount;
-      const breakdown = `${imageCount} × ${currencyFormatter.format(perImage)} via ${endpoint.label}`;
-      let note: string | undefined;
-      if (guidanceMultiplier > 1) {
-        note = "Higher guidance scales can extend runtime, so a small buffer is included.";
-      } else if (negativePromptMultiplier > 1) {
-        note = "Negative prompts add minimal cost for safety filtering.";
-      }
-      return {
-        total,
-        breakdown,
-        note,
-      };
-    }
-    return null;
-  }, [
-    provider,
-    mode,
-    selectedOpenrouterModel,
-    selectedFalGenerateEndpoint,
-    selectedFalEditEndpoint,
-    aspectRatio,
-    numImages,
-    guidanceScale,
-    negativePrompt,
-  ]);
-
   function log(message: string) {
     const ts = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, `${ts} - ${message}`]);
@@ -344,474 +73,24 @@ export default function HomePage() {
     }, 3000);
   }
 
-  function setPhaseQueued() {
-    setRequestStatus("queued");
-    setProgress((p) => (p < 10 ? 10 : p));
-  }
-  function setPhaseRunning() {
-    setRequestStatus("running");
-    setProgress((p) => (p < 60 ? 60 : p));
-  }
-  function setPhaseCompleted() {
-    setRequestStatus("completed");
-    setProgress(100);
-  }
-  function setPhaseError() {
-    setRequestStatus("error");
-    setProgress(0);
-  }
-
-  async function streamFalGenerate(payload: { endpoint: string; prompt: string; params?: Record<string, any> }, signal?: AbortSignal) {
-    const res = await fetch("/api/fal/generate/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal,
-    });
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(
-        data?.error ||
-          "FAL.ai generate stream failed. Check your API key, selected endpoint, and network connectivity."
-      );
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-    while (true) {
-      if (signal?.aborted) {
-        log("FAL.ai: stream aborted by user");
-        try { await reader.cancel(); } catch {}
-        break;
-      }
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-      for (const chunk of parts) {
-        const lines = chunk.split("\n");
-        const eventLine = lines.find((l) => l.startsWith("event:"));
-        const dataLine = lines.find((l) => l.startsWith("data:"));
-        if (!eventLine || !dataLine) continue;
-        const event = eventLine.replace("event:", "").trim();
-        const dataStr = dataLine.replace("data:", "").trim();
-        let payload: any = {};
-        try { payload = JSON.parse(dataStr); } catch {}
-        if (event === "update") {
-          const status = String(payload?.status || "").toUpperCase();
-          if (status.includes("QUEUE") || status === "IN_QUEUE") setPhaseQueued();
-          else if (status.includes("PROGRESS") || status === "IN_PROGRESS") setPhaseRunning();
-          if (typeof payload?.queue_position === "number") {
-            log(`FAL.ai: queue position ${payload.queue_position}`);
-          }
-        } else if (event === "completed") {
-          setPhaseCompleted();
-          const serverLogs: string[] = Array.isArray(payload?.logs) ? payload.logs : [];
-          if (serverLogs.length) serverLogs.forEach((l) => log(`FAL.ai: ${l}`));
-          const imgs: string[] = [];
-          const d = payload?.data;
-          if (Array.isArray(d?.images)) {
-            for (const img of d.images) {
-              if (img?.url) imgs.push(img.url);
-              else if (img?.content) {
-                const type = img?.content_type || "image/png";
-                imgs.push(`data:${type};base64,${img.content}`);
-              }
-            }
-          } else if (d?.image?.url) {
-            imgs.push(d.image.url);
-          } else if (d?.image?.content) {
-            const type = d?.image?.content_type || "image/png";
-            imgs.push(`data:${type};base64,${d.image.content}`);
-          }
-          setImages(imgs);
-          setRawResponse(payload);
-          showToast("success", `FAL.ai: generated ${imgs.length} image(s)`);
-        } else if (event === "error") {
-          setPhaseError();
-          const msg = payload?.error ||
-            "FAL.ai streaming error. Verify the endpoint is available and your parameters are valid.";
-          setError(msg);
-          log(`FAL.ai: ${msg}`);
-          showToast("error", msg);
-        }
-      }
-    }
-  }
-
-  async function streamFalEdit(payload: { endpoint: string; prompt: string; imageUrl?: string; imageBase64?: string; mimeType?: string; params?: Record<string, any> }, signal?: AbortSignal) {
-    const res = await fetch("/api/fal/edit/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal,
-    });
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(
-        data?.error ||
-          "FAL.ai edit stream failed. Ensure an image is provided and the endpoint supports edits."
-      );
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-    while (true) {
-      if (signal?.aborted) {
-        log("FAL.ai: stream aborted by user");
-        try { await reader.cancel(); } catch {}
-        break;
-      }
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-      for (const chunk of parts) {
-        const lines = chunk.split("\n");
-        const eventLine = lines.find((l) => l.startsWith("event:"));
-        const dataLine = lines.find((l) => l.startsWith("data:"));
-        if (!eventLine || !dataLine) continue;
-        const event = eventLine.replace("event:", "").trim();
-        const dataStr = dataLine.replace("data:", "").trim();
-        let payload: any = {};
-        try { payload = JSON.parse(dataStr); } catch {}
-        if (event === "update") {
-          const status = String(payload?.status || "").toUpperCase();
-          if (status.includes("QUEUE") || status === "IN_QUEUE") setPhaseQueued();
-          else if (status.includes("PROGRESS") || status === "IN_PROGRESS") setPhaseRunning();
-          if (typeof payload?.queue_position === "number") {
-            log(`FAL.ai: queue position ${payload.queue_position}`);
-          }
-        } else if (event === "completed") {
-          setPhaseCompleted();
-          const serverLogs: string[] = Array.isArray(payload?.logs) ? payload.logs : [];
-          if (serverLogs.length) serverLogs.forEach((l) => log(`FAL.ai: ${l}`));
-          const imgs: string[] = [];
-          const d = payload?.data;
-          if (Array.isArray(d?.images)) {
-            for (const img of d.images) {
-              if (img?.url) imgs.push(img.url);
-              else if (img?.content) {
-                const type = img?.content_type || "image/png";
-                imgs.push(`data:${type};base64,${img.content}`);
-              }
-            }
-          } else if (d?.image?.url) {
-            imgs.push(d.image.url);
-          } else if (d?.image?.content) {
-            const type = d?.image?.content_type || "image/png";
-            imgs.push(`data:${type};base64,${d.image.content}`);
-          }
-          setImages(imgs);
-          setRawResponse(payload);
-          showToast("success", `FAL.ai: edited ${imgs.length} image(s)`);
-        } else if (event === "error") {
-          setPhaseError();
-          const msg = payload?.error ||
-            "FAL.ai streaming error. Verify the endpoint is available and your parameters are valid.";
-          setError(msg);
-          log(`FAL.ai: ${msg}`);
-          showToast("error", msg);
-        }
-      }
-    }
-  }
-
-  async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
-    const mimeType = file.type || "image/png";
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // result is data URL like "data:image/png;base64,...." -> strip prefix
-        const base64 = result.split(",")[1] || result;
-        resolve({ base64, mimeType });
-      };
-      reader.onerror = (e) => reject(e);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setImages([]);
-    setRawResponse(null);
-
-    if (!prompt.trim()) {
-      setError("Please enter a prompt.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const controller = new AbortController();
-      setAbortController(controller);
-      log(`Starting request: provider=${provider}, mode=${mode}`);
-      if (provider === "openrouter") {
-        if (mode === "generate") {
-          log(`OpenRouter: sending generate request (model=${openrouterModel}, aspectRatio=${aspectRatio || "default"})`);
-          const res = await fetch("/api/openrouter/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: openrouterModel,
-              prompt,
-              aspectRatio: aspectRatio || undefined,
-            }),
-            signal: controller.signal,
-          });
-          const data = await res.json();
-          if (!res.ok)
-            throw new Error(
-              data?.error ||
-                "OpenRouter generate failed. Check your API key in Settings, model access, and network connectivity."
-            );
-          setRawResponse(data?.raw ?? data);
-          const imgs: string[] = Array.isArray(data?.images) ? data.images : [];
-          setImages(imgs);
-          log(`OpenRouter: response received with ${imgs.length} image(s)`);
-        } else {
-          // edit
-          let payload: any = { model: openrouterModel, prompt };
-          if (imageFile) {
-            log(`OpenRouter: reading uploaded file for edit`);
-            const { base64, mimeType } = await fileToBase64(imageFile);
-            payload.imageBase64 = base64;
-            payload.mimeType = mimeType;
-          } else if (imageUrl) {
-            log(`OpenRouter: using provided image URL for edit`);
-            payload.imageUrl = imageUrl;
-          } else {
-            setError("Please upload an image file or provide an image URL for editing.");
-            log(`OpenRouter: edit aborted — no image file or URL provided`);
-            return;
-          }
-
-          log(`OpenRouter: sending edit request (model=${openrouterModel})`);
-          const res = await fetch("/api/openrouter/edit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-          });
-          const data = await res.json();
-          if (!res.ok)
-            throw new Error(
-              data?.error ||
-                "OpenRouter edit failed. Ensure an image is provided and your API key and model permissions are valid."
-            );
-          setRawResponse(data?.raw ?? data);
-          const imgs: string[] = Array.isArray(data?.images) ? data.images : [];
-          setImages(imgs);
-          log(`OpenRouter: response received with ${imgs.length} image(s)`);
-        }
-      } else if (provider === "fal") {
-        if (mode === "generate") {
-          log(`FAL.ai: streaming generate request (endpoint=${falGenerateEndpoint})`);
-          setPhaseQueued();
-          await streamFalGenerate({
-            endpoint: falGenerateEndpoint,
-            prompt,
-            params: {
-              image_size: "landscape_4_3",
-              output_format: "png",
-              ...(numImages ? { num_images: numImages } : {}),
-              ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
-              ...(guidanceScale !== "" ? { guidance_scale: Number(guidanceScale) } : {}),
-              ...(seed !== "" ? { seed: Number(seed) } : {}),
-            },
-          }, controller.signal);
-        } else {
-          // edit
-          let imageBase64: string | undefined;
-          let mimeType: string | undefined;
-          if (imageFile) {
-            log(`FAL.ai: reading uploaded file for edit`);
-            const fileData = await fileToBase64(imageFile);
-            imageBase64 = fileData.base64;
-            mimeType = fileData.mimeType;
-          }
-          if (!imageBase64 && !imageUrl) {
-            setError("Please upload an image file or provide an image URL for editing.");
-            log(`FAL.ai: edit aborted — no image file or URL provided`);
-            return;
-          }
-          log(`FAL.ai: streaming edit request (endpoint=${falEditEndpoint})`);
-          setPhaseQueued();
-          await streamFalEdit({
-            endpoint: falEditEndpoint,
-            prompt,
-            imageUrl: imageUrl || undefined,
-            imageBase64,
-            mimeType,
-            params: {
-              output_format: "png",
-              ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
-              ...(guidanceScale !== "" ? { guidance_scale: Number(guidanceScale) } : {}),
-              ...(seed !== "" ? { seed: Number(seed) } : {}),
-              ...(numImages ? { num_images: numImages } : {}),
-            },
-          }, controller.signal);
-        }
-      }
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        // Request was cancelled
-        setError(null);
-        showToast("info", "Request cancelled");
-        log("Request cancelled by user");
-      } else {
-        setError(err?.message || "Something went wrong.");
-        log(`Error: ${err?.message || String(err)}`);
-      }
-      } finally {
-        setLoading(false);
-        setAbortController(null);
-        log(`Request finished`);
-      }
-    }
-
-  async function copyImage(src: string, idx?: number) {
-    try {
-      const response = await fetch(src);
-      const blob = await response.blob();
-      // @ts-ignore - ClipboardItem may be missing in TS lib
-      await navigator.clipboard.write([
-        // @ts-ignore
-        new ClipboardItem({ [blob.type]: blob }),
-      ]);
-      if (typeof idx === "number") {
-        setCopiedIndex(idx);
-        if (copyResetRef.current) {
-          clearTimeout(copyResetRef.current);
-        }
-        copyResetRef.current = setTimeout(() => {
-          setCopiedIndex(null);
-          copyResetRef.current = null;
-        }, 2000);
-      }
-      log("Copied image to clipboard");
-      return true;
-    } catch (e: any) {
-      setError(e?.message || "Failed to copy image. Try downloading the image instead.");
-      log(`Copy failed: ${e?.message || e}`);
-      return false;
-    }
-  }
-
-  function extFromMime(type: string) {
-    if (type.includes("png")) return "png";
-    if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
-    if (type.includes("webp")) return "webp";
-    if (type.includes("gif")) return "gif";
-    return "png";
-  }
-
-  async function downloadImage(src: string, idx: number) {
-    try {
-      const response = await fetch(src);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `image-${idx + 1}.${extFromMime(blob.type)}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      log("Downloaded image");
-    } catch (e: any) {
-      setError(e?.message || "Failed to download image. Try right-clicking the preview and saving manually.");
-      log(`Download failed: ${e?.message || e}`);
-    }
-  }
-
-  function toggleSelect(index: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelected(new Set(images.map((_, i) => i)));
-  }
-
-  async function copySelected() {
-    if (selected.size === 0) return;
-    let count = 0;
-    for (const idx of selected) {
-      const success = await copyImage(images[idx], idx);
-      if (success) {
-        count++;
-      }
-    }
-    showToast("success", `Copied ${count} image(s) to clipboard`);
-  }
-
-  async function downloadSelected() {
-    if (selected.size === 0) return;
-    let count = 0;
-    for (const idx of selected) {
-      await downloadImage(images[idx], idx);
-      count++;
-    }
-    showToast("success", `Downloaded ${count} image(s)`);
-  }
-
-  async function downloadSelectedZip() {
-    if (selected.size === 0) return;
-    try {
-      const zip = new JSZip();
-      let count = 0;
-      for (const idx of selected) {
-        const src = images[idx];
-        const response = await fetch(src);
-        const blob = await response.blob();
-        const ext = extFromMime(blob.type);
-        const arrayBuffer = await blob.arrayBuffer();
-        zip.file(`image-${idx + 1}.${ext}`, arrayBuffer);
-        count++;
-      }
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `images-${Date.now()}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      showToast("success", `Downloaded ${count} image(s) as ZIP`);
-      log("Downloaded selected images as ZIP");
-    } catch (e: any) {
-      const msg = e?.message || "Failed to create ZIP. Try downloading selected images individually.";
-      setError(msg);
-      showToast("error", msg);
-      log(`ZIP download failed: ${msg}`);
-    }
-  }
-
-  function handleHistoryRerun(item: HistoryItem) {
+  function handleHistoryRerun(item: {
+    id: number;
+    provider: Provider;
+    mode: Mode;
+    prompt: string;
+    model_or_endpoint: string;
+    result_urls?: string[] | null;
+  }) {
     setProvider(item.provider);
     setMode(item.mode);
     setPrompt(item.prompt);
     if (item.provider === "openrouter") {
       setOpenrouterModel(item.model_or_endpoint);
     } else {
-      if (item.mode === "generate") {
-        setFalGenerateEndpoint(item.model_or_endpoint);
-      } else {
-        setFalEditEndpoint(item.model_or_endpoint);
-      }
+      if (item.mode === "generate") setFalGenerateEndpoint(item.model_or_endpoint);
+      else setFalEditEndpoint(item.model_or_endpoint);
     }
     setImages(Array.isArray(item.result_urls) ? item.result_urls : []);
-    setSelected(new Set());
     setError(null);
     setRawResponse(null);
     setLogs([]);
@@ -849,496 +128,79 @@ export default function HomePage() {
             >
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            <a href="/settings" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Settings</a>
+            <a href="/settings" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              Settings
+            </a>
           </div>
         </div>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
           Create and edit images using OpenRouter and FAL.ai. Select provider, operation, enter a prompt, and optionally upload an image.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-6 shadow-sm transition-colors">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider</label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as Provider)}
-                className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-              >
-                <option value="openrouter">OpenRouter</option>
-                <option value="fal">FAL.ai</option>
-              </select>
-            </div>
+        <GenerationForm
+          provider={provider}
+          setProvider={(v) => setProvider(v)}
+          mode={mode}
+          setMode={(v) => setMode(v)}
+          openrouterModel={openrouterModel}
+          setOpenrouterModel={setOpenrouterModel}
+          aspectRatio={aspectRatio}
+          setAspectRatio={setAspectRatio}
+          falGenerateEndpoint={falGenerateEndpoint}
+          setFalGenerateEndpoint={setFalGenerateEndpoint}
+          falEditEndpoint={falEditEndpoint}
+          setFalEditEndpoint={setFalEditEndpoint}
+          numImages={numImages}
+          setNumImages={setNumImages}
+          guidanceScale={guidanceScale}
+          setGuidanceScale={setGuidanceScale}
+          seed={seed}
+          setSeed={setSeed}
+          negativePrompt={negativePrompt}
+          setNegativePrompt={setNegativePrompt}
+          prompt={prompt}
+          setPrompt={setPrompt}
+          imageFile={imageFile}
+          setImageFile={setImageFile}
+          imageUrl={imageUrl}
+          setImageUrl={setImageUrl}
+          loading={loading}
+          setLoading={setLoading}
+          error={error}
+          setError={setError}
+          requestStatus={requestStatus}
+          setRequestStatus={setRequestStatus}
+          progress={progress}
+          setProgress={setProgress}
+          abortController={abortController}
+          setAbortController={setAbortController}
+          onResults={(imgs, raw) => {
+            setImages(imgs);
+            setRawResponse(raw);
+          }}
+          onResetResults={() => {
+            setImages([]);
+            setRawResponse(null);
+            setLogs([]);
+          }}
+          onCancelRequest={cancelRequest}
+          onLog={log}
+          notify={showToast}
+        />
 
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Operation</label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as Mode)}
-                className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-              >
-                <option value="generate">Generate (Text → Image)</option>
-                <option value="edit">Edit (Image → Image)</option>
-              </select>
-            </div>
-          </div>
+        <Results images={images} loading={loading} notify={showToast} onLog={log} />
 
-          {provider === "openrouter" && (
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
-                <select
-                  value={openrouterModel}
-                  onChange={(e) => setOpenrouterModel(e.target.value)}
-                  title={selectedOpenrouterModel?.description || undefined}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                >
-                  {OPENROUTER_MODELS.map((m) => (
-                    <option key={m.id} value={m.id} title={m.description}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                {selectedOpenrouterModel && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedOpenrouterModel.description}</p>
-                )}
-              </div>
-
-              {mode === "generate" && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Aspect Ratio (optional)</label>
-                  <select
-                    value={aspectRatio}
-                    onChange={(e) => setAspectRatio(e.target.value as any)}
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  >
-                    <option value="">Default</option>
-                    {ASPECT_RATIOS.map((ar) => (
-                      <option key={ar} value={ar}>
-                        {ar}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          {provider === "fal" && (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {mode === "generate" ? (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
-                    <select
-                      value={falGenerateEndpoint}
-                      onChange={(e) => setFalGenerateEndpoint(e.target.value)}
-                      title={selectedFalGenerateEndpoint?.description || undefined}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    >
-                      {FAL_GENERATE_ENDPOINTS.map((ep) => (
-                        <option key={ep.id} value={ep.id} title={ep.description}>
-                          {ep.label}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedFalGenerateEndpoint && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedFalGenerateEndpoint.description}</p>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
-                    <select
-                      value={falEditEndpoint}
-                      onChange={(e) => setFalEditEndpoint(e.target.value)}
-                      title={selectedFalEditEndpoint?.description || undefined}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    >
-                      {FAL_EDIT_ENDPOINTS.map((ep) => (
-                        <option key={ep.id} value={ep.id} title={ep.description}>
-                          {ep.label}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedFalEditEndpoint && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedFalEditEndpoint.description}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
-                <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Advanced FAL.ai Settings</summary>
-                <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={6}
-                      value={numImages}
-                      onChange={(e) => setNumImages(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 7"
-                      value={guidanceScale === "" ? "" : guidanceScale}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "") setGuidanceScale("");
-                        else setGuidanceScale(Number(v));
-                      }}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
-                    <textarea
-                      value={negativePrompt}
-                      onChange={(e) => setNegativePrompt(e.target.value)}
-                      placeholder="Describe what to avoid in the image (FAL only)"
-                      rows={2}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
-                    <input
-                      type="number"
-                      placeholder="optional"
-                      value={seed === "" ? "" : seed}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "") setSeed("");
-                        else setSeed(Number(v));
-                      }}
-                      className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-              </details>
-            </div>
-          )}
-
-          <div className="mt-4">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the image or the edit you want..."
-              rows={3}
-              className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-            />
-          </div>
-
-          {mode === "edit" && (
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Image (for edit mode only)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  disabled={Boolean(imageUrl)}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setImageFile(file);
-                    if (file) {
-                      setImageUrl("");
-                    }
-                  }}
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                />
-                {imagePreviewUrl && (
-                  <div className="mt-3 overflow-hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900">
-                    <img src={imagePreviewUrl} alt="Uploaded preview" className="h-48 w-full object-cover" />
-                    <div className="flex items-center justify-between gap-3 px-3 py-2">
-                      <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                        {imageFile?.name || "Uploaded image"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImageFile(null);
-                          setImageUrl("");
-                          setImagePreviewUrl((prev) => {
-                            if (prev) {
-                              URL.revokeObjectURL(prev);
-                            }
-                            return null;
-                          });
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = "";
-                          }
-                        }}
-                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Or Image URL</label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  disabled={Boolean(imageFile)}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setImageUrl(value);
-                    if (value) {
-                      setImageFile(null);
-                    }
-                  }}
-                  placeholder="https://example.com/image.jpg"
-                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">If both are provided, file upload takes precedence.</p>
-              </div>
-            </div>
-          )}
-
-        {costEstimate && (
-          <div className="mt-4 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-900 dark:text-blue-200">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Estimated cost</span>
-              <span className="font-semibold">{currencyFormatter.format(costEstimate.total)}</span>
-            </div>
-            <p className="mt-1 text-xs text-blue-800 dark:text-blue-300">{costEstimate.breakdown}</p>
-            {costEstimate.note && (
-              <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">{costEstimate.note}</p>
-            )}
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3 text-red-700 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
-              <span>Status: {requestStatus === "idle" ? "Idle" : requestStatus === "queued" ? "Queued" : requestStatus === "running" ? "Running" : requestStatus === "completed" ? "Completed" : "Error"}</span>
-              <span>{progress}%</span>
-            </div>
-            <div className="mt-2 h-2 w-full rounded bg-gray-200 dark:bg-gray-800">
-              <div
-                className="h-2 rounded bg-gray-900 dark:bg-gray-100 transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-white dark:text-gray-900 shadow-sm hover:bg-gray-800 dark:hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-            >
-              {loading && (
-                <img src="/loading.svg" alt="Loading" className="inline-block h-5 w-5 text-current" />
-              )}
-              <span>{mode === "generate" ? "Generate" : "Apply Edit"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={cancelRequest}
-              disabled={!loading}
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-            >
-              Cancel Request
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setImages([]);
-                setRawResponse(null);
-                setError(null);
-                setLogs([]);
-              }}
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-            >
-              Reset Results
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold">Results</h2>
-          {images.length > 0 ? (
-            <>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button onClick={selectAll} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Select all</button>
-                <button onClick={() => setSelected(new Set())} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Clear Selection</button>
-                <button onClick={copySelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Copy selected</button>
-                <button onClick={downloadSelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected</button>
-                <button onClick={downloadSelectedZip} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected as ZIP</button>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Selected: {selected.size}</span>
-              </div>
-              <Masonry
-                breakpointCols={{
-                  default: 3,
-                  1024: 2,
-                  640: 1
-                }}
-                className="flex -ml-4 mt-4 w-auto"
-                columnClassName="pl-4 bg-clip-padding"
-              >
-                {images.map((src, idx) => (
-                  <div key={idx} className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx) ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100" : "border-gray-200 dark:border-gray-800"} bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
-                    onClick={() => toggleSelect(idx)}
-                  >
-                    <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />
-                    {selected.has(idx) && (
-                      <div className="pointer-events-none absolute left-2 top-2 rounded bg-gray-900 dark:bg-gray-100 px-2 py-1 text-xs text-white dark:text-gray-900">Selected</div>
-                    )}
-                    <div className="flex items-center gap-2 p-3">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copyImage(src, idx);
-                        }}
-                        className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-                      >
-                        {copiedIndex === idx ? "Copied!" : "Copy image"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          downloadImage(src, idx);
-                        }}
-                        className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </Masonry>
-            </>
-          ) : loading ? (
-            <div className="mt-6 flex h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-neutral-950 text-gray-700 dark:text-gray-300">
-              <img src="/loading.svg" alt="Loading" className="h-10 w-10" />
-              <p className="text-sm font-medium">Generating your images...</p>
-            </div>
-          ) : (
-            <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">No images yet. Run a prompt to see results here.</p>
-          )}
-        </div>
-
-        <div className="mt-10">
-          <h2 className="text-xl font-semibold">History</h2>
-          {historyLoading ? (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Loading your recent runs...</p>
-          ) : historyError ? (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-400">Could not load history: {historyError}</p>
-          ) : history.length === 0 ? (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No history yet. Generate something to build your timeline.</p>
-          ) : (
-            <>
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div className="md:col-span-2">
-                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Search history</label>
-                  <input
-                    type="search"
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    placeholder="Search prompt, model, or endpoint"
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Provider</label>
-                  <select
-                    value={historyProviderFilter}
-                    onChange={(e) => setHistoryProviderFilter(e.target.value as "all" | Provider)}
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  >
-                    <option value="all">All providers</option>
-                    <option value="openrouter">OpenRouter</option>
-                    <option value="fal">FAL.ai</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Operation</label>
-                  <select
-                    value={historyModeFilter}
-                    onChange={(e) => setHistoryModeFilter(e.target.value as "all" | Mode)}
-                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
-                  >
-                    <option value="all">All operations</option>
-                    <option value="generate">Generate</option>
-                    <option value="edit">Edit</option>
-                  </select>
-                </div>
-                {filtersActive && (
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHistorySearch("");
-                        setHistoryProviderFilter("all");
-                        setHistoryModeFilter("all");
-                      }}
-                      className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="mt-4 space-y-4">
-              {filteredHistory.map((item) => (
-                <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.prompt}</p>
-                      <p className="mt-1 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        {item.provider === "fal" ? "FAL.ai" : "OpenRouter"} · {item.mode === "edit" ? "Edit" : "Generate"} · {item.model_or_endpoint}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{new Date(item.created_at).toLocaleString()}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleHistoryRerun(item)}
-                      className="self-start rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
-                    >
-                      Re-run
-                    </button>
-                  </div>
-                  {item.result_urls && item.result_urls.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {item.result_urls.map((url, idx) => (
-                        <img
-                          key={`${item.id}-${idx}`}
-                          src={url}
-                          alt={`History ${item.id} result ${idx + 1}`}
-                          className="h-24 w-full rounded-md object-cover"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              </div>
-            </>
-          )}
-        </div>
+        <History onRerun={handleHistoryRerun} />
 
         {rawResponse && (
           <div className="mt-8">
-            <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors" open={openRawByDefault}>
-              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">View Raw Response (Debug)</summary>
+            <details
+              className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors"
+              open={openRawByDefault}
+            >
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+                View Raw Response (Debug)
+              </summary>
               <pre className="mt-3 overflow-auto rounded bg-gray-50 dark:bg-neutral-950 p-3 text-xs text-gray-800 dark:text-gray-300">{JSON.stringify(rawResponse, null, 2)}</pre>
             </details>
           </div>
@@ -1346,21 +208,36 @@ export default function HomePage() {
 
         {logs.length > 0 && (
           <div className="mt-8">
-            <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors" open={openLogsByDefault}>
-              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Request Logs</summary>
+            <details
+              className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors"
+              open={openLogsByDefault}
+            >
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+                Request Logs
+              </summary>
               <div className="mt-3 space-y-1 text-sm text-gray-800 dark:text-gray-300">
                 {logs.map((l, i) => (
-                  <div key={i} className="rounded bg-gray-50 dark:bg-neutral-950 p-2">{l}</div>
+                  <div key={i} className="rounded bg-gray-50 dark:bg-neutral-950 p-2">
+                    {l}
+                  </div>
                 ))}
               </div>
             </details>
           </div>
         )}
 
-        {/* Toasts */}
         <div className="fixed right-4 top-4 z-50 space-y-2">
           {toasts.map((t) => (
-            <div key={t.id} className={`rounded-lg px-4 py-2 text-sm shadow-lg ${t.type === "success" ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900" : t.type === "error" ? "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900" : "bg-gray-50 dark:bg-neutral-900 text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-800"}`}>
+            <div
+              key={t.id}
+              className={`rounded-lg px-4 py-2 text-sm shadow-lg ${
+                t.type === "success"
+                  ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900"
+                  : t.type === "error"
+                  ? "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900"
+                  : "bg-gray-50 dark:bg-neutral-900 text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-800"
+              }`}
+            >
               {t.message}
             </div>
           ))}
@@ -1369,3 +246,4 @@ export default function HomePage() {
     </main>
   );
 }
+
