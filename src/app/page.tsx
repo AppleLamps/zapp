@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import JSZip from "jszip";
 import Masonry from "react-masonry-css";
 import { loadSettings } from "@/hooks/useLocalSettings";
@@ -10,18 +10,64 @@ import { Moon, Sun } from "lucide-react";
 type Provider = "openrouter" | "fal";
 type Mode = "generate" | "edit";
 
-const OPENROUTER_MODELS = [
-  { id: "google/gemini-2.5-flash-image-preview", label: "Google: Gemini 2.5 Flash Image Preview" },
+type OpenrouterModelOption = {
+  id: string;
+  label: string;
+  description: string;
+  cost: {
+    generate: number;
+    edit: number;
+  };
+};
+
+type FalEndpointOption = {
+  id: string;
+  label: string;
+  description: string;
+  costPerImage: number;
+};
+
+const OPENROUTER_MODELS: OpenrouterModelOption[] = [
+  {
+    id: "google/gemini-2.5-flash-image-preview",
+    label: "Google: Gemini 2.5 Flash Image Preview",
+    description: "Fast multimodal model tuned for preview-quality image renders. Great for rapid iteration.",
+    cost: {
+      generate: 0.02,
+      edit: 0.03,
+    },
+  },
 ];
 
-const FAL_GENERATE_ENDPOINTS = [
-  { id: "fal-ai/flux/dev", label: "FLUX.1 [dev] (Text to Image)" },
-  { id: "fal-ai/flux-pro/kontext/max/text-to-image", label: "FLUX.1 Kontext [max] (Text to Image)" },
+const FAL_GENERATE_ENDPOINTS: FalEndpointOption[] = [
+  {
+    id: "fal-ai/flux/dev",
+    label: "FLUX.1 [dev] (Text to Image)",
+    description: "Development endpoint with quick turnaround. Ideal for experimenting with prompts.",
+    costPerImage: 0.012,
+  },
+  {
+    id: "fal-ai/flux-pro/kontext/max/text-to-image",
+    label: "FLUX.1 Kontext [max] (Text to Image)",
+    description: "High fidelity text-to-image endpoint for production-ready assets.",
+    costPerImage: 0.035,
+  },
 ];
 
-const FAL_EDIT_ENDPOINTS = [
-  { id: "fal-ai/flux-pro/kontext/max", label: "FLUX.1 Kontext [max] (Image to Image)" },
+const FAL_EDIT_ENDPOINTS: FalEndpointOption[] = [
+  {
+    id: "fal-ai/flux-pro/kontext/max",
+    label: "FLUX.1 Kontext [max] (Image to Image)",
+    description: "Image-to-image endpoint preserving composition while applying prompt-driven edits.",
+    costPerImage: 0.028,
+  },
 ];
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
 
 const ASPECT_RATIOS = [
   "1:1",
@@ -44,6 +90,12 @@ type HistoryItem = {
   model_or_endpoint: string;
   prompt: string;
   result_urls?: string[] | null;
+};
+
+type CostEstimate = {
+  total: number;
+  breakdown: string;
+  note?: string;
 };
 
 export default function HomePage() {
@@ -83,7 +135,12 @@ export default function HomePage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historySearch, setHistorySearch] = useState<string>("");
+  const [historyProviderFilter, setHistoryProviderFilter] = useState<"all" | Provider>("all");
+  const [historyModeFilter, setHistoryModeFilter] = useState<"all" | Mode>("all");
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const s = loadSettings();
@@ -156,9 +213,127 @@ export default function HomePage() {
     }
   }, [images]);
 
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreviewUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      return;
+    }
+    const objectUrl = URL.createObjectURL(imageFile);
+    setImagePreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return objectUrl;
+    });
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [imageFile]);
+
+  const selectedOpenrouterModel = useMemo(
+    () => OPENROUTER_MODELS.find((m) => m.id === openrouterModel) || OPENROUTER_MODELS[0] || null,
+    [openrouterModel]
+  );
+
+  const selectedFalGenerateEndpoint = useMemo(
+    () => FAL_GENERATE_ENDPOINTS.find((ep) => ep.id === falGenerateEndpoint) || FAL_GENERATE_ENDPOINTS[0] || null,
+    [falGenerateEndpoint]
+  );
+
+  const selectedFalEditEndpoint = useMemo(
+    () => FAL_EDIT_ENDPOINTS.find((ep) => ep.id === falEditEndpoint) || FAL_EDIT_ENDPOINTS[0] || null,
+    [falEditEndpoint]
+  );
+
+  const filteredHistory = useMemo(() => {
+    const query = historySearch.trim().toLowerCase();
+    return history.filter((item) => {
+      if (historyProviderFilter !== "all" && item.provider !== historyProviderFilter) return false;
+      if (historyModeFilter !== "all" && item.mode !== historyModeFilter) return false;
+      if (!query) return true;
+      const haystack = [
+        item.prompt,
+        item.model_or_endpoint,
+        item.provider,
+        item.mode,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [history, historySearch, historyProviderFilter, historyModeFilter]);
+
+  const filtersActive =
+    historySearch.trim() !== "" || historyProviderFilter !== "all" || historyModeFilter !== "all";
+
+  const costEstimate = useMemo<CostEstimate | null>(() => {
+    const negativePromptMultiplier = negativePrompt.trim() ? 1.02 : 1;
+    const guidanceValue = guidanceScale === "" ? null : Number(guidanceScale);
+    let guidanceMultiplier = 1;
+    if (typeof guidanceValue === "number" && !Number.isNaN(guidanceValue)) {
+      if (guidanceValue > 12) guidanceMultiplier = 1.12;
+      else if (guidanceValue > 8) guidanceMultiplier = 1.06;
+    }
+    if (provider === "openrouter") {
+      const model = selectedOpenrouterModel;
+      if (!model) return null;
+      const baseCost = model.cost[mode];
+      const aspectMultiplier = aspectRatio && aspectRatio !== "" && aspectRatio !== "1:1" ? 1.08 : 1;
+      const total = baseCost * aspectMultiplier * guidanceMultiplier * negativePromptMultiplier;
+      const breakdownParts = [`${currencyFormatter.format(baseCost)} ${mode === "generate" ? "base cost" : "edit base cost"}`];
+      if (aspectMultiplier > 1) breakdownParts.push("aspect ratio adjustment (+8%)");
+      if (guidanceMultiplier > 1) {
+        breakdownParts.push(
+          `guidance scale adjustment (+${Math.round((guidanceMultiplier - 1) * 100)}%)`
+        );
+      }
+      if (negativePromptMultiplier > 1) breakdownParts.push("negative prompt parsing (+2%)");
+      return {
+        total,
+        breakdown: `${breakdownParts.join(" + ")} via ${model.label}`,
+        note: "Estimate recalculates automatically while you update OpenRouter settings.",
+      };
+    }
+    if (provider === "fal") {
+      const endpoint = mode === "generate" ? selectedFalGenerateEndpoint : selectedFalEditEndpoint;
+      if (!endpoint) return null;
+      const imageCount = Math.max(1, Number(numImages) || 1);
+      let perImage = endpoint.costPerImage * guidanceMultiplier * negativePromptMultiplier;
+      const total = perImage * imageCount;
+      const breakdown = `${imageCount} × ${currencyFormatter.format(perImage)} via ${endpoint.label}`;
+      let note: string | undefined;
+      if (guidanceMultiplier > 1) {
+        note = "Higher guidance scales can extend runtime, so a small buffer is included.";
+      } else if (negativePromptMultiplier > 1) {
+        note = "Negative prompts add minimal cost for safety filtering.";
+      }
+      return {
+        total,
+        breakdown,
+        note,
+      };
+    }
+    return null;
+  }, [
+    provider,
+    mode,
+    selectedOpenrouterModel,
+    selectedFalGenerateEndpoint,
+    selectedFalEditEndpoint,
+    aspectRatio,
+    numImages,
+    guidanceScale,
+    negativePrompt,
+  ]);
+
   function log(message: string) {
     const ts = new Date().toLocaleTimeString();
-    setLogs((prev) => [...prev, `${ts} — ${message}`]);
+    setLogs((prev) => [...prev, `${ts} - ${message}`]);
   }
 
   function showToast(type: "success" | "error" | "info", message: string) {
@@ -195,7 +370,10 @@ export default function HomePage() {
     });
     if (!res.ok || !res.body) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data?.error || "FAL generate stream failed");
+      throw new Error(
+        data?.error ||
+          "FAL.ai generate stream failed. Check your API key, selected endpoint, and network connectivity."
+      );
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -252,9 +430,11 @@ export default function HomePage() {
           showToast("success", `FAL.ai: generated ${imgs.length} image(s)`);
         } else if (event === "error") {
           setPhaseError();
-          setError(payload?.error || "Streaming error");
-          log(`FAL.ai: ${payload?.error || "Streaming error"}`);
-          showToast("error", payload?.error || "Streaming error");
+          const msg = payload?.error ||
+            "FAL.ai streaming error. Verify the endpoint is available and your parameters are valid.";
+          setError(msg);
+          log(`FAL.ai: ${msg}`);
+          showToast("error", msg);
         }
       }
     }
@@ -269,7 +449,10 @@ export default function HomePage() {
     });
     if (!res.ok || !res.body) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data?.error || "FAL edit stream failed");
+      throw new Error(
+        data?.error ||
+          "FAL.ai edit stream failed. Ensure an image is provided and the endpoint supports edits."
+      );
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -326,9 +509,11 @@ export default function HomePage() {
           showToast("success", `FAL.ai: edited ${imgs.length} image(s)`);
         } else if (event === "error") {
           setPhaseError();
-          setError(payload?.error || "Streaming error");
-          log(`FAL.ai: ${payload?.error || "Streaming error"}`);
-          showToast("error", payload?.error || "Streaming error");
+          const msg = payload?.error ||
+            "FAL.ai streaming error. Verify the endpoint is available and your parameters are valid.";
+          setError(msg);
+          log(`FAL.ai: ${msg}`);
+          showToast("error", msg);
         }
       }
     }
@@ -379,7 +564,11 @@ export default function HomePage() {
             signal: controller.signal,
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || "OpenRouter generate failed");
+          if (!res.ok)
+            throw new Error(
+              data?.error ||
+                "OpenRouter generate failed. Check your API key in Settings, model access, and network connectivity."
+            );
           setRawResponse(data?.raw ?? data);
           const imgs: string[] = Array.isArray(data?.images) ? data.images : [];
           setImages(imgs);
@@ -409,7 +598,11 @@ export default function HomePage() {
             signal: controller.signal,
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || "OpenRouter edit failed");
+          if (!res.ok)
+            throw new Error(
+              data?.error ||
+                "OpenRouter edit failed. Ensure an image is provided and your API key and model permissions are valid."
+            );
           setRawResponse(data?.raw ?? data);
           const imgs: string[] = Array.isArray(data?.images) ? data.images : [];
           setImages(imgs);
@@ -503,7 +696,7 @@ export default function HomePage() {
       log("Copied image to clipboard");
       return true;
     } catch (e: any) {
-      setError(e?.message || "Failed to copy image");
+      setError(e?.message || "Failed to copy image. Try downloading the image instead.");
       log(`Copy failed: ${e?.message || e}`);
       return false;
     }
@@ -531,7 +724,7 @@ export default function HomePage() {
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       log("Downloaded image");
     } catch (e: any) {
-      setError(e?.message || "Failed to download image");
+      setError(e?.message || "Failed to download image. Try right-clicking the preview and saving manually.");
       log(`Download failed: ${e?.message || e}`);
     }
   }
@@ -597,7 +790,7 @@ export default function HomePage() {
       showToast("success", `Downloaded ${count} image(s) as ZIP`);
       log("Downloaded selected images as ZIP");
     } catch (e: any) {
-      const msg = e?.message || "Failed to download ZIP";
+      const msg = e?.message || "Failed to create ZIP. Try downloading selected images individually.";
       setError(msg);
       showToast("error", msg);
       log(`ZIP download failed: ${msg}`);
@@ -697,14 +890,18 @@ export default function HomePage() {
                 <select
                   value={openrouterModel}
                   onChange={(e) => setOpenrouterModel(e.target.value)}
+                  title={selectedOpenrouterModel?.description || undefined}
                   className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 >
                   {OPENROUTER_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>
+                    <option key={m.id} value={m.id} title={m.description}>
                       {m.label}
                     </option>
                   ))}
                 </select>
+                {selectedOpenrouterModel && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedOpenrouterModel.description}</p>
+                )}
               </div>
 
               {mode === "generate" && (
@@ -736,14 +933,18 @@ export default function HomePage() {
                     <select
                       value={falGenerateEndpoint}
                       onChange={(e) => setFalGenerateEndpoint(e.target.value)}
+                      title={selectedFalGenerateEndpoint?.description || undefined}
                       className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                     >
                       {FAL_GENERATE_ENDPOINTS.map((ep) => (
-                        <option key={ep.id} value={ep.id}>
+                        <option key={ep.id} value={ep.id} title={ep.description}>
                           {ep.label}
                         </option>
                       ))}
                     </select>
+                    {selectedFalGenerateEndpoint && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedFalGenerateEndpoint.description}</p>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -751,14 +952,18 @@ export default function HomePage() {
                     <select
                       value={falEditEndpoint}
                       onChange={(e) => setFalEditEndpoint(e.target.value)}
+                      title={selectedFalEditEndpoint?.description || undefined}
                       className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                     >
                       {FAL_EDIT_ENDPOINTS.map((ep) => (
-                        <option key={ep.id} value={ep.id}>
+                        <option key={ep.id} value={ep.id} title={ep.description}>
                           {ep.label}
                         </option>
                       ))}
                     </select>
+                    {selectedFalEditEndpoint && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedFalEditEndpoint.description}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -838,6 +1043,7 @@ export default function HomePage() {
                 <input
                   type="file"
                   accept="image/*"
+                  ref={fileInputRef}
                   disabled={Boolean(imageUrl)}
                   onChange={(e) => {
                     const file = e.target.files?.[0] || null;
@@ -848,6 +1054,35 @@ export default function HomePage() {
                   }}
                   className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 />
+                {imagePreviewUrl && (
+                  <div className="mt-3 overflow-hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900">
+                    <img src={imagePreviewUrl} alt="Uploaded preview" className="h-48 w-full object-cover" />
+                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                        {imageFile?.name || "Uploaded image"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageFile(null);
+                          setImageUrl("");
+                          setImagePreviewUrl((prev) => {
+                            if (prev) {
+                              URL.revokeObjectURL(prev);
+                            }
+                            return null;
+                          });
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
+                        }}
+                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Or Image URL</label>
@@ -869,6 +1104,19 @@ export default function HomePage() {
               </div>
             </div>
           )}
+
+        {costEstimate && (
+          <div className="mt-4 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-900 dark:text-blue-200">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Estimated cost</span>
+              <span className="font-semibold">{currencyFormatter.format(costEstimate.total)}</span>
+            </div>
+            <p className="mt-1 text-xs text-blue-800 dark:text-blue-300">{costEstimate.breakdown}</p>
+            {costEstimate.note && (
+              <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">{costEstimate.note}</p>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3 text-red-700 dark:text-red-400">
@@ -997,8 +1245,60 @@ export default function HomePage() {
           ) : history.length === 0 ? (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No history yet. Generate something to build your timeline.</p>
           ) : (
-            <div className="mt-4 space-y-4">
-              {history.map((item) => (
+            <>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Search history</label>
+                  <input
+                    type="search"
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="Search prompt, model, or endpoint"
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Provider</label>
+                  <select
+                    value={historyProviderFilter}
+                    onChange={(e) => setHistoryProviderFilter(e.target.value as "all" | Provider)}
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                  >
+                    <option value="all">All providers</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="fal">FAL.ai</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Operation</label>
+                  <select
+                    value={historyModeFilter}
+                    onChange={(e) => setHistoryModeFilter(e.target.value as "all" | Mode)}
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
+                  >
+                    <option value="all">All operations</option>
+                    <option value="generate">Generate</option>
+                    <option value="edit">Edit</option>
+                  </select>
+                </div>
+                {filtersActive && (
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistorySearch("");
+                        setHistoryProviderFilter("all");
+                        setHistoryModeFilter("all");
+                      }}
+                      className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 space-y-4">
+              {filteredHistory.map((item) => (
                 <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                     <div>
@@ -1030,7 +1330,8 @@ export default function HomePage() {
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
 
