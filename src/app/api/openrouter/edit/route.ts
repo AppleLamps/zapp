@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { getClientIp, checkAndConsumeRateLimit, RATE_LIMITS } from "@/lib/rateLimit";
-import { getUserId } from "@/lib/auth";
-import { saveHistory } from "@/lib/history";
+import {
+  validateOpenRouterKey,
+  performRateLimiting,
+  callOpenRouterAPI,
+  saveOpenRouterHistory,
+} from "@/lib/openrouter/utils";
 
 export const runtime = "nodejs";
 
@@ -32,27 +35,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENROUTER_API_KEY is not configured" },
-        { status: 500 }
-      );
-    }
+    const keyError = validateOpenRouterKey();
+    if (keyError) return keyError;
 
-    const ip = getClientIp(req);
-    const userId = await getUserId();
-    const scope = "edit" as const;
-    const limits = userId ? RATE_LIMITS.authenticated[scope] : RATE_LIMITS.anonymous[scope];
-    const { allowed, remaining, resetAt } = await checkAndConsumeRateLimit(userId || ip, scope, limits);
-    if (!allowed) {
-      return NextResponse.json(
-        { error: "rate_limited", detail: `Retry after ${resetAt.toISOString()}` },
-        { status: 429, headers: { "X-RateLimit-Remaining": String(remaining), "X-RateLimit-Reset": resetAt.toISOString() } }
-      );
-    }
+    const rateLimitResult = await performRateLimiting(req, "edit");
+    if (!rateLimitResult.allowed) return rateLimitResult.response;
 
+    const { userId, ip } = rateLimitResult;
+    const apiKey = process.env.OPENROUTER_API_KEY!;
     const started = Date.now();
+
     const imageUrlOrData = imageUrl
       ? imageUrl
       : `data:${mimeType || "image/png"};base64,${imageBase64}`;
@@ -71,52 +63,41 @@ export async function POST(req: Request) {
       modalities: ["text", "image"],
     };
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    const { ok, status, data } = await callOpenRouterAPI(payload, apiKey);
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      await saveHistory({
-        user_id: userId,
-        provider: "openrouter",
+    if (!ok) {
+      await saveOpenRouterHistory({
+        userId,
         mode: "edit",
-        model_or_endpoint: model,
+        model,
         prompt,
         status: "error",
-        duration_ms: Date.now() - started,
+        durationMs: Date.now() - started,
         ip,
-        request_id: data?.id ?? null,
-        raw_response: data,
+        requestId: data?.id ?? null,
+        rawResponse: data,
         error: JSON.stringify(data),
       });
       return NextResponse.json(
         { error: "openrouter_error", detail: data },
-        { status: res.status }
+        { status }
       );
     }
 
     const choice = data?.choices?.[0];
     const images: string[] | undefined = choice?.message?.images;
 
-    await saveHistory({
-      user_id: userId,
-      provider: "openrouter",
+    await saveOpenRouterHistory({
+      userId,
       mode: "edit",
-      model_or_endpoint: model,
+      model,
       prompt,
       status: "completed",
-      duration_ms: Date.now() - started,
+      durationMs: Date.now() - started,
       ip,
-      request_id: data?.id ?? null,
-      raw_response: data,
-      result_urls: images ?? null,
+      requestId: data?.id ?? null,
+      rawResponse: data,
+      resultUrls: images ?? null,
     });
     return NextResponse.json({ images, raw: data }, { status: 200 });
   } catch (err: any) {
