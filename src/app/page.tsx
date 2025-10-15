@@ -594,7 +594,8 @@ export default function HomePage() {
                   <select
                     value={aspectRatio}
                     onChange={(e) => setAspectRatio(e.target.value as any)}
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                    disabled={provider === "fal"}
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">Default</option>
                     {ASPECT_RATIOS.map((ar) => (
@@ -650,7 +651,8 @@ export default function HomePage() {
                   max={6}
                   value={numImages}
                   onChange={(e) => setNumImages(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  disabled={provider === "openrouter"}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <p className="mt-1 text-xs text-gray-500">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
               </div>
@@ -665,7 +667,8 @@ export default function HomePage() {
                     if (v === "") setGuidanceScale("");
                     else setGuidanceScale(Number(v));
                   }}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  disabled={provider === "openrouter"}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <div className="md:col-span-2">
@@ -675,7 +678,8 @@ export default function HomePage() {
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   placeholder="Describe what to avoid in the image (FAL only)"
                   rows={2}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  disabled={provider === "openrouter"}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <div>
@@ -689,7 +693,8 @@ export default function HomePage() {
                     if (v === "") setSeed("");
                     else setSeed(Number(v));
                   }}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  disabled={provider === "openrouter"}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
             </div>
@@ -709,7 +714,7 @@ export default function HomePage() {
           {mode === "edit" && (
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium text-gray-700">Upload Image (for OpenRouter and FAL)</label>
+                <label className="text-sm font-medium text-gray-700">Upload Image (for edit mode only)</label>
                 <input
                   type="file"
                   accept="image/*"
