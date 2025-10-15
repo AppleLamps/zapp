@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import JSZip from "jszip";
+import Masonry from "react-masonry-css";
 import { loadSettings } from "@/hooks/useLocalSettings";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Moon, Sun } from "lucide-react";
 
 type Provider = "openrouter" | "fal";
 type Mode = "generate" | "edit";
@@ -34,6 +37,7 @@ const ASPECT_RATIOS = [
 ] as const;
 
 export default function HomePage() {
+  const { theme, toggleTheme } = useTheme();
   const [provider, setProvider] = useState<Provider>("openrouter");
   const [mode, setMode] = useState<Mode>("generate");
   const [prompt, setPrompt] = useState("");
@@ -534,24 +538,34 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900">
+    <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-neutral-950 dark:text-gray-100 transition-colors">
       <section className="mx-auto max-w-4xl px-6 py-12">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-semibold tracking-tight">AI Image Studio</h1>
-          <a href="/settings" className="text-sm text-blue-600 hover:underline">Settings</a>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            >
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+            <a href="/settings" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Settings</a>
+          </div>
         </div>
-        <p className="mt-2 text-gray-600">
+        <p className="mt-2 text-gray-600 dark:text-gray-400">
           Create and edit images using OpenRouter and FAL.ai. Select provider, operation, enter a prompt, and optionally upload an image.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-6 shadow-sm transition-colors">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-gray-700">Provider</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider</label>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as Provider)}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
               >
                 <option value="openrouter">OpenRouter</option>
                 <option value="fal">FAL.ai</option>
@@ -559,11 +573,11 @@ export default function HomePage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Operation</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Operation</label>
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as Mode)}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
               >
                 <option value="generate">Generate (Text → Image)</option>
                 <option value="edit">Edit (Image → Image)</option>
@@ -574,11 +588,11 @@ export default function HomePage() {
           {provider === "openrouter" && (
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium text-gray-700">Model</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
                 <select
                   value={openrouterModel}
                   onChange={(e) => setOpenrouterModel(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 >
                   {OPENROUTER_MODELS.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -590,12 +604,11 @@ export default function HomePage() {
 
               {mode === "generate" && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Aspect Ratio (optional)</label>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Aspect Ratio (optional)</label>
                   <select
                     value={aspectRatio}
                     onChange={(e) => setAspectRatio(e.target.value as any)}
-                    disabled={provider === "fal"}
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                   >
                     <option value="">Default</option>
                     {ASPECT_RATIOS.map((ar) => (
@@ -613,11 +626,11 @@ export default function HomePage() {
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               {mode === "generate" ? (
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Endpoint</label>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
                   <select
                     value={falGenerateEndpoint}
                     onChange={(e) => setFalGenerateEndpoint(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                   >
                     {FAL_GENERATE_ENDPOINTS.map((ep) => (
                       <option key={ep.id} value={ep.id}>
@@ -628,11 +641,11 @@ export default function HomePage() {
                 </div>
               ) : (
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Endpoint</label>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
                   <select
                     value={falEditEndpoint}
                     onChange={(e) => setFalEditEndpoint(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                    className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                   >
                     {FAL_EDIT_ENDPOINTS.map((ep) => (
                       <option key={ep.id} value={ep.id}>
@@ -644,20 +657,19 @@ export default function HomePage() {
               )}
               {/* Advanced controls for FAL */}
               <div>
-                <label className="text-sm font-medium text-gray-700">Number of Images</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
                 <input
                   type="number"
                   min={1}
                   max={6}
                   value={numImages}
                   onChange={(e) => setNumImages(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
-                  disabled={provider === "openrouter"}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
-                <p className="mt-1 text-xs text-gray-500">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Guidance Scale</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
                 <input
                   type="number"
                   placeholder="e.g. 7"
@@ -667,23 +679,21 @@ export default function HomePage() {
                     if (v === "") setGuidanceScale("");
                     else setGuidanceScale(Number(v));
                   }}
-                  disabled={provider === "openrouter"}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="text-sm font-medium text-gray-700">Negative Prompt</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
                 <textarea
                   value={negativePrompt}
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   placeholder="Describe what to avoid in the image (FAL only)"
                   rows={2}
-                  disabled={provider === "openrouter"}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Seed</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
                 <input
                   type="number"
                   placeholder="optional"
@@ -693,63 +703,62 @@ export default function HomePage() {
                     if (v === "") setSeed("");
                     else setSeed(Number(v));
                   }}
-                  disabled={provider === "openrouter"}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
               </div>
             </div>
           )}
 
           <div className="mt-4">
-            <label className="text-sm font-medium text-gray-700">Prompt</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe the image or the edit you want..."
               rows={3}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+              className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
             />
           </div>
 
           {mode === "edit" && (
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium text-gray-700">Upload Image (for edit mode only)</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Image (for edit mode only)</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Or Image URL</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Or Image URL</label>
                 <input
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="https://example.com/image.jpg"
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white p-2 text-gray-900 focus:border-gray-500 focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
                 />
-                <p className="mt-1 text-xs text-gray-500">If both are provided, file upload takes precedence.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">If both are provided, file upload takes precedence.</p>
               </div>
             </div>
           )}
 
         {error && (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-red-700">
+          <div className="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3 text-red-700 dark:text-red-400">
             {error}
           </div>
         )}
 
           <div className="mt-4">
-            <div className="flex items-center justify-between text-sm text-gray-700">
+            <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
               <span>Status: {requestStatus === "idle" ? "Idle" : requestStatus === "queued" ? "Queued" : requestStatus === "running" ? "Running" : requestStatus === "completed" ? "Completed" : "Error"}</span>
               <span>{progress}%</span>
             </div>
-            <div className="mt-2 h-2 w-full rounded bg-gray-200">
+            <div className="mt-2 h-2 w-full rounded bg-gray-200 dark:bg-gray-800">
               <div
-                className="h-2 rounded bg-gray-900 transition-all"
+                className="h-2 rounded bg-gray-900 dark:bg-gray-100 transition-all"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -759,10 +768,10 @@ export default function HomePage() {
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-white shadow-sm hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-white dark:text-gray-900 shadow-sm hover:bg-gray-800 dark:hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
             >
               {loading && (
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" />
+                <img src="/loading.svg" alt="Loading" className="inline-block h-5 w-5 text-current" />
               )}
               <span>{mode === "generate" ? "Generate" : "Apply Edit"}</span>
             </button>
@@ -770,7 +779,7 @@ export default function HomePage() {
               type="button"
               onClick={cancelRequest}
               disabled={!loading}
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
             >
               Cancel Request
             </button>
@@ -782,7 +791,7 @@ export default function HomePage() {
                 setError(null);
                 setLogs([]);
               }}
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 hover:bg-gray-100"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Reset Results
             </button>
@@ -793,60 +802,74 @@ export default function HomePage() {
           <div className="mt-8">
             <h2 className="text-xl font-semibold">Results</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button onClick={selectAll} type="button" className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100">Select all</button>
-              <button onClick={clearSelection} type="button" className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100">Clear</button>
-              <button onClick={copySelected} type="button" className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100">Copy selected</button>
-              <button onClick={downloadSelected} type="button" className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100">Download selected</button>
-              <button onClick={downloadSelectedZip} type="button" className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-100">Download selected as ZIP</button>
-              <span className="text-xs text-gray-500">Selected: {selected.size}</span>
+              <button onClick={selectAll} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Select all</button>
+              <button onClick={clearSelection} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Clear</button>
+              <button onClick={copySelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Copy selected</button>
+              <button onClick={downloadSelected} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected</button>
+              <button onClick={downloadSelectedZip} type="button" className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors">Download selected as ZIP</button>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Selected: {selected.size}</span>
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Masonry
+              breakpointCols={{
+                default: 3,
+                1024: 2,
+                640: 1
+              }}
+              className="flex -ml-4 mt-4 w-auto"
+              columnClassName="pl-4 bg-clip-padding"
+            >
               {images.map((src, idx) => (
-                <div key={idx} className={`relative overflow-hidden rounded-lg border ${selected.has(idx) ? "border-gray-900 ring-2 ring-gray-900" : "border-gray-200"} bg-white`}
+                <div key={idx} className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx) ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100" : "border-gray-200 dark:border-gray-800"} bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
                   onClick={() => toggleSelect(idx)}
                 >
-                  <img src={src} alt={`Result ${idx + 1}`} className="h-full w-full object-cover" />
+                  <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />
                   {selected.has(idx) && (
-                    <div className="pointer-events-none absolute left-2 top-2 rounded bg-gray-900 px-2 py-1 text-xs text-white">Selected</div>
+                    <div className="pointer-events-none absolute left-2 top-2 rounded bg-gray-900 dark:bg-gray-100 px-2 py-1 text-xs text-white dark:text-gray-900">Selected</div>
                   )}
                   <div className="flex items-center gap-2 p-3">
                     <button
                       type="button"
-                      onClick={() => copyImage(src)}
-                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 hover:bg-gray-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyImage(src);
+                      }}
+                      className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                     >
                       Copy image
                     </button>
                     <button
                       type="button"
-                      onClick={() => downloadImage(src, idx)}
-                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-900 hover:bg-gray-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        downloadImage(src, idx);
+                      }}
+                      className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                     >
                       Download
                     </button>
                   </div>
                 </div>
               ))}
-            </div>
+            </Masonry>
           </div>
         )}
 
         {rawResponse && (
           <div className="mt-8">
-            <details className="rounded-lg border border-gray-200 bg-white p-4" open={openRawByDefault}>
-              <summary className="cursor-pointer text-sm font-medium text-gray-700">View Raw Response (Debug)</summary>
-              <pre className="mt-3 overflow-auto rounded bg-gray-50 p-3 text-xs text-gray-800">{JSON.stringify(rawResponse, null, 2)}</pre>
+            <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors" open={openRawByDefault}>
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">View Raw Response (Debug)</summary>
+              <pre className="mt-3 overflow-auto rounded bg-gray-50 dark:bg-neutral-950 p-3 text-xs text-gray-800 dark:text-gray-300">{JSON.stringify(rawResponse, null, 2)}</pre>
             </details>
           </div>
         )}
 
         {logs.length > 0 && (
           <div className="mt-8">
-            <details className="rounded-lg border border-gray-200 bg-white p-4" open={openLogsByDefault}>
-              <summary className="cursor-pointer text-sm font-medium text-gray-700">Request Logs</summary>
-              <div className="mt-3 space-y-1 text-sm text-gray-800">
+            <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors" open={openLogsByDefault}>
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Request Logs</summary>
+              <div className="mt-3 space-y-1 text-sm text-gray-800 dark:text-gray-300">
                 {logs.map((l, i) => (
-                  <div key={i} className="rounded bg-gray-50 p-2">{l}</div>
+                  <div key={i} className="rounded bg-gray-50 dark:bg-neutral-950 p-2">{l}</div>
                 ))}
               </div>
             </details>
@@ -856,7 +879,7 @@ export default function HomePage() {
         {/* Toasts */}
         <div className="fixed right-4 top-4 z-50 space-y-2">
           {toasts.map((t) => (
-            <div key={t.id} className={`rounded-lg px-4 py-2 text-sm shadow ${t.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : t.type === "error" ? "bg-red-50 text-red-700 border border-red-200" : "bg-gray-50 text-gray-800 border border-gray-200"}`}>
+            <div key={t.id} className={`rounded-lg px-4 py-2 text-sm shadow-lg ${t.type === "success" ? "bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900" : t.type === "error" ? "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900" : "bg-gray-50 dark:bg-neutral-900 text-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-800"}`}>
               {t.message}
             </div>
           ))}

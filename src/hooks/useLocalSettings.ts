@@ -15,6 +15,7 @@ export type AppSettings = {
   seedDefault: number | "";
   showLogsByDefault: boolean;
   showRawByDefault: boolean;
+  theme: "light" | "dark";
 };
 
 const SETTINGS_KEY = "ai_image_studio_settings";
@@ -31,6 +32,7 @@ export const defaultSettings: AppSettings = {
   seedDefault: "",
   showLogsByDefault: false,
   showRawByDefault: false,
+  theme: "light",
 };
 
 export function loadSettings(): AppSettings {
