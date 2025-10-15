@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
-import { getClientIp, checkAndConsumeRateLimit, RATE_LIMITS } from "@/lib/rateLimit";
-import { getUserId } from "@/lib/auth";
-import { saveHistory } from "@/lib/history";
+import { validateFalKey, performRateLimiting, saveFalHistory } from "@/lib/fal/utils";
 
 export const runtime = "nodejs";
 
@@ -34,31 +32,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const falKey = process.env.FAL_API_KEY;
-    if (!falKey) {
-      return NextResponse.json(
-        { error: "FAL_API_KEY is not configured" },
-        { status: 500 }
-      );
-    }
+    const keyError = validateFalKey();
+    if (keyError) return keyError;
 
-    fal.config({ credentials: falKey });
+    const rateLimitResult = await performRateLimiting(req, "edit");
+    if (!rateLimitResult.allowed) return rateLimitResult.response;
+
+    const { userId, ip } = rateLimitResult;
 
     const imageUrlOrDataUri = imageUrl
       ? imageUrl
       : `data:${mimeType || "image/png"};base64,${imageBase64}`;
-
-    const ip = getClientIp(req);
-    const userId = await getUserId();
-    const scope = "edit" as const;
-    const limits = userId ? RATE_LIMITS.authenticated[scope] : RATE_LIMITS.anonymous[scope];
-    const { allowed, remaining, resetAt } = await checkAndConsumeRateLimit(userId || ip, scope, limits);
-    if (!allowed) {
-      return NextResponse.json(
-        { error: "rate_limited", detail: `Retry after ${resetAt.toISOString()}` },
-        { status: 429, headers: { "X-RateLimit-Remaining": String(remaining), "X-RateLimit-Reset": resetAt.toISOString() } }
-      );
-    }
 
     const started = Date.now();
 
@@ -72,22 +56,15 @@ export async function POST(req: Request) {
       onQueueUpdate: () => {},
     });
 
-    await saveHistory({
-      user_id: userId,
-      provider: "fal",
+    await saveFalHistory({
+      userId,
       mode: "edit",
-      model_or_endpoint: endpoint,
+      endpoint,
       prompt,
-      negative_prompt: params?.negative_prompt ?? null,
-      guidance_scale: params?.guidance_scale ?? null,
-      seed: params?.seed ?? null,
-      num_images: params?.num_images ?? null,
-      status: "completed",
-      duration_ms: Date.now() - started,
+      params,
+      durationMs: Date.now() - started,
       ip,
-      request_id: result?.requestId ?? null,
-      raw_response: result,
-      result_urls: Array.isArray(result?.data?.images) ? result.data.images.map((i: any) => i.url ?? i) : null,
+      result,
     });
 
     return NextResponse.json(
