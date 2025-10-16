@@ -96,7 +96,7 @@ export function History({ onRerun }: HistoryProps) {
           </div>
           <div className="mt-4 space-y-4">
             {filteredHistory.map((item) => (
-              <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
+              <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 card-shadow transition-colors">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                   <div>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.prompt}</p>
@@ -108,7 +108,7 @@ export function History({ onRerun }: HistoryProps) {
                   <button
                     type="button"
                     onClick={() => onRerun(item)}
-                    className="self-start rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+                    className="self-start rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-semibold text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                   >
                     Re-run
                   </button>

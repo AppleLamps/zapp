@@ -101,9 +101,12 @@ export default function HomePage() {
           Create and edit images using OpenRouter and FAL.ai. Select provider, operation, enter a prompt, and optionally upload an image.
         </p>
 
-        <GenerationForm />
-
-        <Results />
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:gap-8 items-start">
+          <GenerationForm />
+          <div className="mt-6 lg:mt-0">
+            <Results />
+          </div>
+        </div>
 
         <History onRerun={handleHistoryRerun} />
 
