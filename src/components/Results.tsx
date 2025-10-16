@@ -3,16 +3,11 @@
 import Masonry from "react-masonry-css";
 import { useState } from "react";
 import { useImageOperations } from "@/hooks/useImageOperations";
+import { useAppStore } from "@/store/appStore";
 
-export type ResultsProps = {
-  images: string[];
-  loading: boolean;
-  notify: (type: "success" | "error" | "info", message: string) => void;
-  onLog?: (msg: string) => void;
-};
-
-export function Results({ images, loading, notify, onLog }: ResultsProps) {
+export function Results() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const { images, loading, addToast, addLog } = useAppStore();
   const { copiedIndex, copyImage, downloadImage, copySelected, downloadSelected, downloadSelectedZip } =
     useImageOperations();
 
@@ -31,25 +26,26 @@ export function Results({ images, loading, notify, onLog }: ResultsProps) {
 
   async function handleCopySelected() {
     const count = await copySelected(images, selected);
-    notify("success", `Copied ${count} image(s) to clipboard`);
-    onLog?.(`Copied ${count} image(s) to clipboard`);
+    addToast("success", `Copied ${count} image(s) to clipboard`);
+    addLog(`Copied ${count} image(s) to clipboard`);
   }
 
   async function handleDownloadSelected() {
     const count = await downloadSelected(images, selected);
-    notify("success", `Downloaded ${count} image(s)`);
-    onLog?.(`Downloaded ${count} image(s)`);
+    addToast("success", `Downloaded ${count} image(s)`);
+    addLog(`Downloaded ${count} image(s)`);
   }
 
   async function handleDownloadSelectedZip() {
     try {
       const count = await downloadSelectedZip(images, selected);
-      notify("success", `Downloaded ${count} image(s) as ZIP`);
-      onLog?.("Downloaded selected images as ZIP");
-    } catch (e: any) {
-      const msg = e?.message || "Failed to create ZIP. Try downloading selected images individually.";
-      notify("error", msg);
-      onLog?.(`ZIP download failed: ${msg}`);
+      addToast("success", `Downloaded ${count} image(s) as ZIP`);
+      addLog("Downloaded selected images as ZIP");
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      const msg = error.message || "Failed to create ZIP. Try downloading selected images individually.";
+      addToast("error", msg);
+      addLog(`ZIP download failed: ${msg}`);
     }
   }
 
@@ -104,11 +100,10 @@ export function Results({ images, loading, notify, onLog }: ResultsProps) {
             {images.map((src, idx) => (
               <div
                 key={idx}
-                className={`mb-4 relative overflow-hidden rounded-lg border ${
-                  selected.has(idx)
-                    ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100"
-                    : "border-gray-200 dark:border-gray-800"
-                } bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
+                className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx)
+                  ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100"
+                  : "border-gray-200 dark:border-gray-800"
+                  } bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
                 onClick={() => toggleSelect(idx)}
               >
                 <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />

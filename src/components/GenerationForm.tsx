@@ -6,6 +6,7 @@ import { ASPECT_RATIOS } from "@/lib/types";
 import { useImageOperations } from "@/hooks/useImageOperations";
 import { useOpenRouter } from "@/hooks/useOpenRouter";
 import { useFal } from "@/hooks/useFal";
+import { useAppStore } from "@/store/appStore";
 
 type AspectRatio = (typeof ASPECT_RATIOS)[number] | "";
 
@@ -71,59 +72,9 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export type GenerationFormProps = {
-  provider: Provider;
-  setProvider: (v: Provider) => void;
-  mode: Mode;
-  setMode: (v: Mode) => void;
-
-  openrouterModel: string;
-  setOpenrouterModel: (v: string) => void;
-  aspectRatio: AspectRatio;
-  setAspectRatio: (v: AspectRatio) => void;
-
-  falGenerateEndpoint: string;
-  setFalGenerateEndpoint: (v: string) => void;
-  falEditEndpoint: string;
-  setFalEditEndpoint: (v: string) => void;
-
-  numImages: number;
-  setNumImages: (v: number) => void;
-  guidanceScale: number | "";
-  setGuidanceScale: (v: number | "") => void;
-  seed: number | "";
-  setSeed: (v: number | "") => void;
-  negativePrompt: string;
-  setNegativePrompt: (v: string) => void;
-
-  prompt: string;
-  setPrompt: (v: string) => void;
-  imageFile: File | null;
-  setImageFile: (f: File | null) => void;
-  imageUrl: string;
-  setImageUrl: (v: string) => void;
-
-  loading: boolean;
-  setLoading: (v: boolean) => void;
-  error: string | null;
-  setError: (v: string | null) => void;
-  requestStatus: "idle" | "queued" | "running" | "completed" | "error";
-  setRequestStatus: (s: "idle" | "queued" | "running" | "completed" | "error") => void;
-  progress: number;
-  setProgress: (v: number) => void;
-  abortController: AbortController | null;
-  setAbortController: (c: AbortController | null) => void;
-
-  onResults: (images: string[], raw: any) => void;
-  onResetResults: () => void;
-  onCancelRequest: () => void;
-  onLog: (msg: string) => void;
-  notify: (type: "success" | "error" | "info", message: string) => void;
-};
-
 type CostEstimate = { total: number; breakdown: string; note?: string };
 
-export function GenerationForm(props: GenerationFormProps) {
+export function GenerationForm() {
   const {
     provider,
     setProvider,
@@ -161,12 +112,12 @@ export function GenerationForm(props: GenerationFormProps) {
     setProgress,
     abortController,
     setAbortController,
-    onResults,
-    onResetResults,
-    onCancelRequest,
-    onLog,
-    notify,
-  } = props;
+    setImages,
+    setRawResponse,
+    addLog,
+    addToast,
+    resetResults,
+  } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -175,7 +126,7 @@ export function GenerationForm(props: GenerationFormProps) {
   const { generate: orGenerate, edit: orEdit } = useOpenRouter();
   const fal = useFal();
 
-  // Mirror fal hook status/progress to parent state
+  // Mirror fal hook status/progress to store
   useEffect(() => {
     setRequestStatus(fal.status);
   }, [fal.status, setRequestStatus]);
@@ -236,7 +187,7 @@ export function GenerationForm(props: GenerationFormProps) {
       const model = selectedOpenrouterModel;
       if (!model) return null;
       const baseCost = model.cost[mode];
-      const aspectMultiplier = aspectRatio && aspectRatio !== "" && aspectRatio !== "1:1" ? 1.08 : 1;
+      const aspectMultiplier = aspectRatio && aspectRatio.length > 0 && aspectRatio !== "1:1" ? 1.08 : 1;
       const total = baseCost * aspectMultiplier * guidanceMultiplier * negativePromptMultiplier;
       const breakdownParts = [
         `${currencyFormatter.format(baseCost)} ${mode === "generate" ? "base cost" : "edit base cost"}`,
@@ -255,7 +206,7 @@ export function GenerationForm(props: GenerationFormProps) {
       const endpoint = mode === "generate" ? selectedFalGenerateEndpoint : selectedFalEditEndpoint;
       if (!endpoint) return null;
       const imageCount = Math.max(1, Number(numImages) || 1);
-      let perImage = endpoint.costPerImage * guidanceMultiplier * negativePromptMultiplier;
+      const perImage = endpoint.costPerImage * guidanceMultiplier * negativePromptMultiplier;
       const total = perImage * imageCount;
       const breakdown = `${imageCount} x ${currencyFormatter.format(perImage)} via ${endpoint.label}`;
       let note: string | undefined;
@@ -279,7 +230,8 @@ export function GenerationForm(props: GenerationFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    onResults([], null);
+    setImages([]);
+    setRawResponse(null);
 
     if (!prompt.trim()) {
       setError("Please enter a prompt.");
@@ -290,11 +242,11 @@ export function GenerationForm(props: GenerationFormProps) {
       setLoading(true);
       const controller = new AbortController();
       setAbortController(controller);
-      onLog(`Starting request: provider=${provider}, mode=${mode}`);
+      addLog(`Starting request: provider=${provider}, mode=${mode}`);
 
       if (provider === "openrouter") {
         if (mode === "generate") {
-          onLog(
+          addLog(
             `OpenRouter: sending generate request (model=${openrouterModel}, aspectRatio=${aspectRatio || "default"})`
           );
           const { images, raw } = await orGenerate({
@@ -303,36 +255,38 @@ export function GenerationForm(props: GenerationFormProps) {
             aspectRatio,
             signal: controller.signal,
           });
-          onResults(images, raw);
-          onLog(`OpenRouter: response received with ${images.length} image(s)`);
+          setImages(images);
+          setRawResponse(raw);
+          addLog(`OpenRouter: response received with ${images.length} image(s)`);
         } else {
-          let payload: { imageUrl?: string; imageBase64?: string; mimeType?: string } = {};
+          const payload: { imageUrl?: string; imageBase64?: string; mimeType?: string } = {};
           if (imageFile) {
-            onLog(`OpenRouter: reading uploaded file for edit`);
+            addLog(`OpenRouter: reading uploaded file for edit`);
             const { base64, mimeType } = await fileToBase64(imageFile);
             payload.imageBase64 = base64;
             payload.mimeType = mimeType;
           } else if (imageUrl) {
-            onLog(`OpenRouter: using provided image URL for edit`);
+            addLog(`OpenRouter: using provided image URL for edit`);
             payload.imageUrl = imageUrl;
           } else {
             setError("Please upload an image file or provide an image URL for editing.");
-            onLog(`OpenRouter: edit aborted - no image file or URL provided`);
+            addLog(`OpenRouter: edit aborted - no image file or URL provided`);
             return;
           }
-          onLog(`OpenRouter: sending edit request (model=${openrouterModel})`);
+          addLog(`OpenRouter: sending edit request (model=${openrouterModel})`);
           const { images, raw } = await orEdit({
             model: openrouterModel,
             prompt,
             ...payload,
             signal: controller.signal,
           });
-          onResults(images, raw);
-          onLog(`OpenRouter: response received with ${images.length} image(s)`);
+          setImages(images);
+          setRawResponse(raw);
+          addLog(`OpenRouter: response received with ${images.length} image(s)`);
         }
       } else if (provider === "fal") {
         if (mode === "generate") {
-          onLog(`FAL.ai: streaming generate request (endpoint=${falGenerateEndpoint})`);
+          addLog(`FAL.ai: streaming generate request (endpoint=${falGenerateEndpoint})`);
           // Prime status for UX
           fal.setStatus("queued");
           fal.setProgress((p) => (p < 10 ? 10 : p));
@@ -351,23 +305,24 @@ export function GenerationForm(props: GenerationFormProps) {
             },
             controller.signal
           );
-          onResults(images, raw);
-          notify("success", `FAL.ai: generated ${images.length} image(s)`);
+          setImages(images);
+          setRawResponse(raw);
+          addToast("success", `FAL.ai: generated ${images.length} image(s)`);
         } else {
           let imageBase64: string | undefined;
           let mimeType: string | undefined;
           if (imageFile) {
-            onLog(`FAL.ai: reading uploaded file for edit`);
+            addLog(`FAL.ai: reading uploaded file for edit`);
             const fileData = await fileToBase64(imageFile);
             imageBase64 = fileData.base64;
             mimeType = fileData.mimeType;
           }
           if (!imageBase64 && !imageUrl) {
             setError("Please upload an image file or provide an image URL for editing.");
-            onLog(`FAL.ai: edit aborted - no image file or URL provided`);
+            addLog(`FAL.ai: edit aborted - no image file or URL provided`);
             return;
           }
-          onLog(`FAL.ai: streaming edit request (endpoint=${falEditEndpoint})`);
+          addLog(`FAL.ai: streaming edit request (endpoint=${falEditEndpoint})`);
           fal.setStatus("queued");
           fal.setProgress((p) => (p < 10 ? 10 : p));
           const { images, raw } = await fal.streamEdit(
@@ -387,24 +342,40 @@ export function GenerationForm(props: GenerationFormProps) {
             },
             controller.signal
           );
-          onResults(images, raw);
-          notify("success", `FAL.ai: edited ${images.length} image(s)`);
+          setImages(images);
+          setRawResponse(raw);
+          addToast("success", `FAL.ai: edited ${images.length} image(s)`);
         }
       }
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (error.name === "AbortError") {
         setError(null);
-        notify("info", "Request cancelled");
-        onLog("Request cancelled by user");
+        addToast("info", "Request cancelled");
+        addLog("Request cancelled by user");
       } else {
-        setError(err?.message || "Something went wrong.");
-        onLog(`Error: ${err?.message || String(err)}`);
-        notify("error", err?.message || "Request failed");
+        setError(error.message || "Something went wrong.");
+        addLog(`Error: ${error.message || String(err)}`);
+        addToast("error", error.message || "Request failed");
       }
     } finally {
       setLoading(false);
       setAbortController(null);
-      onLog(`Request finished`);
+      addLog(`Request finished`);
+    }
+  }
+
+  function handleCancel() {
+    if (abortController) {
+      try {
+        abortController.abort();
+      } catch { }
+      setAbortController(null);
+      setLoading(false);
+      setRequestStatus("idle");
+      setProgress(0);
+      addToast("info", "Request cancelled");
+      addLog("Request cancelled by user");
     }
   }
 
@@ -686,7 +657,7 @@ export function GenerationForm(props: GenerationFormProps) {
         </button>
         <button
           type="button"
-          onClick={onCancelRequest}
+          onClick={handleCancel}
           disabled={!loading}
           className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
         >
@@ -695,7 +666,7 @@ export function GenerationForm(props: GenerationFormProps) {
         <button
           type="button"
           onClick={() => {
-            onResetResults();
+            resetResults();
             setError(null);
             fal.reset();
           }}
