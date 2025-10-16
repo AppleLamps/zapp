@@ -85,7 +85,10 @@ export async function POST(req: Request) {
     }
 
     const choice = data?.choices?.[0];
-    const images: string[] | undefined = choice?.message?.images;
+    const imageObjects = choice?.message?.images;
+    const images: string[] | undefined = Array.isArray(imageObjects)
+      ? imageObjects.map((img: any) => img?.url || img).filter(Boolean)
+      : undefined;
 
     await saveOpenRouterHistory({
       userId,

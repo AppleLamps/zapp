@@ -41,9 +41,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(theme === "light" ? "dark" : "light");
   };
 
-  // Prevent flash of wrong theme
+  // Ensure context is always provided, even before mount
+  // to avoid errors when consumers call useTheme during initial render.
   if (!mounted) {
-    return <>{children}</>;
+    return (
+      <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+        {children}
+      </ThemeContext.Provider>
+    );
   }
 
   return (

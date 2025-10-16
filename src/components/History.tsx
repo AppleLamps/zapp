@@ -42,8 +42,9 @@ export function History({ onRerun }: HistoryProps) {
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
             <div className="md:col-span-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Search history</label>
+              <label htmlFor="history-search-input" className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Search history</label>
               <input
+                id="history-search-input"
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -52,8 +53,9 @@ export function History({ onRerun }: HistoryProps) {
               />
             </div>
             <div>
-              <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Provider</label>
+              <label htmlFor="history-provider-filter" className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Provider</label>
               <select
+                id="history-provider-filter"
                 value={providerFilter}
                 onChange={(e) => setProviderFilter(e.target.value as "all" | Provider)}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
@@ -64,8 +66,9 @@ export function History({ onRerun }: HistoryProps) {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Operation</label>
+              <label htmlFor="history-mode-filter" className="text-xs font-medium uppercase tracking-wide text-gray-600 dark:text-gray-400">Operation</label>
               <select
+                id="history-mode-filter"
                 value={modeFilter}
                 onChange={(e) => setModeFilter(e.target.value as "all" | Mode)}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"

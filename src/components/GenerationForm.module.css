@@ -1,0 +1,17 @@
+.progressBar {
+    height: 0.5rem;
+    width: 0%;
+    border-radius: 0.25rem;
+    background-color: rgb(17 24 39 / var(--tw-bg-opacity));
+    --tw-bg-opacity: 1;
+    transition: all 0.15s ease-in-out;
+}
+
+.progressBar[data-progress] {
+    width: attr(data-progress);
+}
+
+.dark .progressBar {
+    background-color: rgb(243 244 246 / var(--tw-bg-opacity));
+    --tw-bg-opacity: 1;
+}

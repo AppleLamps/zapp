@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Provider, Mode } from "@/lib/types";
+import styles from "./GenerationForm.module.css";
 import { ASPECT_RATIOS } from "@/lib/types";
 import { useImageOperations } from "@/hooks/useImageOperations";
 import { useOpenRouter } from "@/hooks/useOpenRouter";
@@ -383,8 +384,9 @@ export function GenerationForm() {
     <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-6 shadow-sm transition-colors">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider</label>
+          <label htmlFor="provider-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider</label>
           <select
+            id="provider-select"
             value={provider}
             onChange={(e) => setProvider(e.target.value as Provider)}
             className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
@@ -395,8 +397,9 @@ export function GenerationForm() {
         </div>
 
         <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Operation</label>
+          <label htmlFor="mode-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Operation</label>
           <select
+            id="mode-select"
             value={mode}
             onChange={(e) => setMode(e.target.value as Mode)}
             className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
@@ -410,8 +413,9 @@ export function GenerationForm() {
       {provider === "openrouter" && (
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
+            <label htmlFor="openrouter-model-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</label>
             <select
+              id="openrouter-model-select"
               value={openrouterModel}
               onChange={(e) => setOpenrouterModel(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
@@ -428,8 +432,9 @@ export function GenerationForm() {
           </div>
           {mode === "generate" && (
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Aspect Ratio</label>
+              <label htmlFor="aspect-ratio-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Aspect Ratio</label>
               <select
+                id="aspect-ratio-select"
                 value={aspectRatio || ""}
                 onChange={(e) => setAspectRatio((e.target.value as AspectRatio) || "")}
                 className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
@@ -451,8 +456,9 @@ export function GenerationForm() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {mode === "generate" ? (
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
+                <label htmlFor="fal-generate-endpoint-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
                 <select
+                  id="fal-generate-endpoint-select"
                   value={falGenerateEndpoint}
                   onChange={(e) => setFalGenerateEndpoint(e.target.value)}
                   title={selectedFalGenerateEndpoint?.description || undefined}
@@ -470,8 +476,9 @@ export function GenerationForm() {
               </div>
             ) : (
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
+                <label htmlFor="fal-edit-endpoint-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</label>
                 <select
+                  id="fal-edit-endpoint-select"
                   value={falEditEndpoint}
                   onChange={(e) => setFalEditEndpoint(e.target.value)}
                   title={selectedFalEditEndpoint?.description || undefined}
@@ -493,8 +500,9 @@ export function GenerationForm() {
             <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Advanced FAL.ai Settings</summary>
             <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
+                <label htmlFor="num-images-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
                 <input
+                  id="num-images-input"
                   type="number"
                   min={1}
                   max={6}
@@ -505,8 +513,9 @@ export function GenerationForm() {
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">FAL endpoints support multiple outputs; limits vary by endpoint.</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
+                <label htmlFor="guidance-scale-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Guidance Scale</label>
                 <input
+                  id="guidance-scale-input"
                   type="number"
                   placeholder="e.g. 7"
                   value={guidanceScale === "" ? "" : guidanceScale}
@@ -519,8 +528,9 @@ export function GenerationForm() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
+                <label htmlFor="negative-prompt-textarea" className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</label>
                 <textarea
+                  id="negative-prompt-textarea"
                   value={negativePrompt}
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   placeholder="Describe what to avoid in the image (FAL only)"
@@ -529,8 +539,9 @@ export function GenerationForm() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
+                <label htmlFor="seed-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Seed</label>
                 <input
+                  id="seed-input"
                   type="number"
                   placeholder="optional"
                   value={seed === "" ? "" : seed}
@@ -548,8 +559,9 @@ export function GenerationForm() {
       )}
 
       <div className="mt-4">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</label>
+        <label htmlFor="prompt-textarea" className="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</label>
         <textarea
+          id="prompt-textarea"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Describe the image or the edit you want..."
@@ -561,8 +573,9 @@ export function GenerationForm() {
       {mode === "edit" && (
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Image (for edit mode only)</label>
+            <label htmlFor="image-file-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Upload Image (for edit mode only)</label>
             <input
+              id="image-file-input"
               type="file"
               accept="image/*"
               ref={fileInputRef}
@@ -599,8 +612,9 @@ export function GenerationForm() {
             )}
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Or Image URL</label>
+            <label htmlFor="image-url-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Or Image URL</label>
             <input
+              id="image-url-input"
               type="url"
               value={imageUrl}
               disabled={Boolean(imageFile)}
@@ -642,7 +656,7 @@ export function GenerationForm() {
           <span>{progress}%</span>
         </div>
         <div className="mt-2 h-2 w-full rounded bg-gray-200 dark:bg-gray-800">
-          <div className="h-2 rounded bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${progress}%` }} />
+          <div className={styles.progressBar} data-progress={`${progress}%`} />
         </div>
       </div>
 

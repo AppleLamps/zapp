@@ -1,0 +1,4 @@
+[projects.'\\?\C:\Users\lucas\Desktop\zapp']
+trust_level = "trusted"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
