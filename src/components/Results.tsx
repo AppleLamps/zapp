@@ -54,43 +54,43 @@ export function Results() {
       <h2 className="text-xl font-semibold">Results</h2>
       {images.length > 0 ? (
         <>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-2 card-shadow">
             <button
               onClick={selectAll}
               type="button"
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Select all
             </button>
             <button
               onClick={() => setSelected(new Set())}
               type="button"
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Clear Selection
             </button>
             <button
               onClick={handleCopySelected}
               type="button"
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Copy selected
             </button>
             <button
               onClick={handleDownloadSelected}
               type="button"
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Download selected
             </button>
             <button
               onClick={handleDownloadSelectedZip}
               type="button"
-              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+              className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
             >
               Download selected as ZIP
             </button>
-            <span className="text-xs text-gray-500 dark:text-gray-400">Selected: {selected.size}</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 ml-auto">Selected: {selected.size}</span>
           </div>
           <Masonry
             breakpointCols={{ default: 3, 1024: 2, 640: 1 }}
@@ -103,7 +103,7 @@ export function Results() {
                 className={`mb-4 relative overflow-hidden rounded-lg border ${selected.has(idx)
                   ? "border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100"
                   : "border-gray-200 dark:border-gray-800"
-                  } bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg`}
+                  } bg-white dark:bg-neutral-900 transition-all cursor-pointer hover:shadow-lg hover:-translate-y-1`}
                 onClick={() => toggleSelect(idx)}
               >
                 <img src={src} alt={`Result ${idx + 1}`} className="w-full h-auto object-cover" />

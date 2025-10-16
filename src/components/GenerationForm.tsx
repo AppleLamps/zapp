@@ -382,7 +382,7 @@ export function GenerationForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-6 shadow-sm transition-colors">
+    <form onSubmit={handleSubmit} className="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-6 card-shadow transition-colors">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label htmlFor="provider-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">Provider</label>
@@ -497,10 +497,10 @@ export function GenerationForm() {
               </div>
             )}
           </div>
-          <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-neutral-900 p-4 transition-colors">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">Advanced FAL.ai Settings</summary>
-            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
+          <details className="rounded-lg border border-gray-200 dark:border-gray-800 transition-colors">
+            <summary className="cursor-pointer p-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors">Advanced FAL.ai Settings</summary>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label htmlFor="num-images-input" className="text-sm font-medium text-gray-700 dark:text-gray-300">Number of Images</label>
                 <input
                   id="num-images-input"
@@ -566,7 +566,7 @@ export function GenerationForm() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Describe the image or the edit you want..."
-          rows={3}
+          rows={4}
           className="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 p-2 text-gray-900 dark:text-gray-100 focus:border-gray-500 dark:focus:border-gray-600 focus:outline-none transition-colors"
         />
       </div>
@@ -633,13 +633,13 @@ export function GenerationForm() {
       )}
 
       {costEstimate && (
-        <div className="mt-4 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-900 dark:text-blue-200">
+        <div className="mt-4 rounded-md bg-gray-50 dark:bg-neutral-800/50 p-3 text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between">
             <span className="font-medium">Estimated cost</span>
             <span className="font-semibold">{currencyFormatter.format(costEstimate.total)}</span>
           </div>
-          <p className="mt-1 text-xs text-blue-800 dark:text-blue-300">{costEstimate.breakdown}</p>
-          {costEstimate.note && <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">{costEstimate.note}</p>}
+          <p className="mt-1 text-xs text-gray-800 dark:text-gray-200">{costEstimate.breakdown}</p>
+          {costEstimate.note && <p className="mt-1 text-xs text-gray-700 dark:text-gray-400">{costEstimate.note}</p>}
         </div>
       )}
 
@@ -657,7 +657,7 @@ export function GenerationForm() {
           <span>{progress}%</span>
         </div>
         <div className="mt-2 h-2 w-full rounded bg-gray-200 dark:bg-gray-800">
-          <div className={styles.progressBar} data-progress={`${progress}%`} />
+          <div className={styles.progressBar} style={{ width: `${progress}%` }} />
         </div>
       </div>
 
@@ -665,7 +665,7 @@ export function GenerationForm() {
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-white dark:text-gray-900 shadow-sm hover:bg-gray-800 dark:hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo-600 dark:bg-indigo-500 px-6 py-2.5 font-semibold text-white shadow-sm hover:bg-indigo-500 dark:hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
         >
           {loading && <Image src="/loading.svg" alt="Loading" className="inline-block h-5 w-5 text-current" width={20} height={20} />}
           <span>{mode === "generate" ? "Generate" : "Apply Edit"}</span>
@@ -674,7 +674,7 @@ export function GenerationForm() {
           type="button"
           onClick={handleCancel}
           disabled={!loading}
-          className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+          className="rounded-md px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
         >
           Cancel Request
         </button>
@@ -685,7 +685,7 @@ export function GenerationForm() {
             setError(null);
             fal.reset();
           }}
-          className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-neutral-800 px-4 py-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
+          className="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
         >
           Reset Results
         </button>
